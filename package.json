@@ -1,0 +1,52 @@
+{
+  "name": "visl-ebitda-pmo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VISL EBITDA Drive PMO - consolidated cost-reduction governance across ESL, Iron Ore Business (IOK/IOG/VAB/HO) and FACOR",
+  "main": "server.js",
+  "engines": { "node": ">=18.18" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "concurrently -n api,web -c blue,magenta \"node --watch server.js\" \"vite\"",
+    "dev:api": "node --watch server.js",
+    "dev:web": "vite",
+    "build": "tsc -p web/tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "migrate": "node src/db/migrate.js",
+    "seed": "node src/db/seed.js",
+    "setup": "npm run migrate && npm run seed",
+    "mail:test": "node src/scripts/mailTest.js",
+    "check:metrics": "node src/scripts/reconcile.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "csv-parse": "^5.5.6",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "ldapts": "^7.0.12",
+    "morgan": "^1.10.0",
+    "mssql": "^11.0.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.14"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "chart.js": "^4.4.7",
+    "concurrently": "^9.1.0",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}

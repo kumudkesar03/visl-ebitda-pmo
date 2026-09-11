@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+var/
+public/assets/
+public/*.html
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
