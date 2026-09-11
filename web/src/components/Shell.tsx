@@ -67,11 +67,11 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <img src="/img/logo-white.png" alt="Vedanta Iron &amp; Steel" />
-        <div>
-          <div className="bt">EBITDA Drive</div>
-          <div className="bs">VISL PMO</div>
-        </div>
+        {/* Full logo in the open rail; the mark alone when the rail collapses
+            to icons, where a wordmark would be too small to read. */}
+        <img className="brand-full" src="/img/visl-logo-white.png" alt="Vedanta Iron &amp; Steel" />
+        <img className="brand-mark" src="/img/visl-mark-white.png" alt="Vedanta Iron &amp; Steel" />
+        <div className="bs">EBITDA Drive PMO</div>
       </div>
 
       <nav className="nav">

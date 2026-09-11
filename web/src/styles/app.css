@@ -133,14 +133,17 @@ hr { border: 0; border-top: 1px solid var(--ink-200); margin: 18px 0; }
 
 .sidebar-brand {
   height: var(--header-h);
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px;
   padding: 0 16px;
   border-bottom: 1px solid rgba(255,255,255,.08);
   flex: 0 0 auto;
 }
-.sidebar-brand img { height: 26px; width: auto; }
+/* The VISL logo is roughly 7.5:1, so it is sized by width to fill the rail
+   rather than by height, which would overflow it. */
+.sidebar-brand .brand-full { width: 100%; max-width: 188px; height: auto; display: block; }
+.sidebar-brand .brand-mark { display: none; width: 30px; height: 30px; }
 .sidebar-brand .bt { color: #fff; font-weight: 650; font-size: 13.5px; letter-spacing: -.01em; line-height: 1.15; }
-.sidebar-brand .bs { color: #7f9ab8; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; margin-top: 1px; }
+.sidebar-brand .bs { color: #7f9ab8; font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; padding-left: 2px; }
 
 .nav { flex: 1 1 auto; overflow-y: auto; padding: 12px 10px 20px; }
 .nav-label {
@@ -616,8 +619,9 @@ table.grid.compact th, table.grid.compact td { padding: 6px 10px; font-size: 12.
 
 @media (max-width: 1180px) {
   :root { --sidebar-w: 66px; }
-  .sidebar-brand { justify-content: center; padding: 0 8px; }
-  .sidebar-brand img { height: 24px; }
+  .sidebar-brand { align-items: center; padding: 0 8px; }
+  .sidebar-brand .brand-full { display: none; }
+  .sidebar-brand .brand-mark { display: block; }
   .sidebar-brand div, .sidebar-foot, .nav-label { display: none; }
   .nav { padding: 10px 8px; }
   .nav a { justify-content: center; padding: 10px 0; }

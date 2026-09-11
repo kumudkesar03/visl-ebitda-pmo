@@ -54,7 +54,7 @@ export function Login() {
   return (
     <div className="login-page">
       <div className="login-panel">
-        <img src="/img/logo-white.png" alt="Vedanta Iron &amp; Steel" />
+        <img src="/img/visl-logo-white.png" alt="Vedanta Iron &amp; Steel" />
         <h2>EBITDA Drive PMO</h2>
         <p>
           One consolidated view of the cost-reduction drive across Vedanta Iron &amp; Steel — ESL,
