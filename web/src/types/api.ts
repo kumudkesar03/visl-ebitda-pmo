@@ -244,6 +244,7 @@ export interface User {
   home_bu: string;
   designation: string | null;
   is_active: boolean;
+  ad_user?: boolean;
   last_login: string | null;
   role_label?: string;
   sees?: string[];

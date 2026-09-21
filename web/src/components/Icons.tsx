@@ -25,6 +25,7 @@ const PATHS: Record<string, string> = {
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10',
   mywork: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9',
   plus: 'M12 5v14M5 12h14',
+  menu: 'M3 6h18M3 12h18M3 18h18',
   check: 'M20 6L9 17l-5-5',
   x: 'M18 6L6 18M6 6l12 12',
   chevronRight: 'M9 18l6-6-6-6',

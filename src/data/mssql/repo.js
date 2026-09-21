@@ -131,11 +131,14 @@ async function touchLogin(id) {
 }
 
 async function createUser(payload, actor) {
-  const hash = payload.password ? await bcrypt.hash(payload.password, 10) : null;
+  // AD accounts never carry a local password: the directory is the only
+  // thing that can vouch for them.
+  const adUser = !!payload.ad_user;
+  const hash = !adUser && payload.password ? await bcrypt.hash(payload.password, 10) : null;
   const rows = await query(`
     INSERT INTO dbo.users (employee_id, name, email, role, home_business_unit_id, designation, phone, password_hash, ad_user, is_active)
     OUTPUT INSERTED.id
-    SELECT @employee_id, @name, @email, @role, b.id, @designation, @phone, @hash, 0, 1
+    SELECT @employee_id, @name, @email, @role, b.id, @designation, @phone, @hash, @ad_user, 1
     FROM dbo.business_units b WHERE b.code = @home_bu`,
   {
     employee_id: payload.employee_id,
@@ -146,8 +149,10 @@ async function createUser(payload, actor) {
     designation: payload.designation || null,
     phone: payload.phone || null,
     hash,
+    ad_user: adUser ? 1 : 0,
   });
   const id = rows[0] && rows[0].id;
+  if (!id) throw httpError(400, `Unknown business unit "${payload.home_bu}".`);
   await audit(actor, 'user.create', 'user', id, `Created ${payload.employee_id} as ${payload.role}`);
   return findUserById(id);
 }
@@ -160,6 +165,16 @@ async function updateUser(id, patch, actor) {
     if (patch[key] !== undefined) { sets.push(`${column} = @${key}`); params[key] = patch[key]; }
   }
   if (patch.is_active !== undefined) { sets.push('is_active = @is_active'); params.is_active = patch.is_active ? 1 : 0; }
+  if (patch.ad_user !== undefined) {
+    sets.push('ad_user = @ad_user');
+    params.ad_user = patch.ad_user ? 1 : 0;
+    // Moving to AD retires the local password so it cannot be used as a back door.
+    if (patch.ad_user) sets.push('password_hash = NULL');
+  }
+  if (patch.password && !patch.ad_user) {
+    sets.push('password_hash = @hash');
+    params.hash = await bcrypt.hash(String(patch.password), 10);
+  }
   if (patch.home_bu !== undefined) {
     sets.push('home_business_unit_id = (SELECT id FROM dbo.business_units WHERE code = @home_bu)');
     params.home_bu = String(patch.home_bu).toUpperCase();
@@ -167,7 +182,8 @@ async function updateUser(id, patch, actor) {
   if (!sets.length) return findUserById(id);
   sets.push('updated_at = SYSUTCDATETIME()');
   await query(`UPDATE dbo.users SET ${sets.join(', ')} WHERE id = @id`, params);
-  await audit(actor, 'user.update', 'user', Number(id), Object.keys(patch).join(', '));
+  // Field names only - never the password itself.
+  await audit(actor, 'user.update', 'user', Number(id), Object.keys(patch).map((k) => (k === 'password' ? 'password reset' : k)).join(', '));
   return findUserById(id);
 }
 
@@ -210,13 +226,13 @@ async function reportingContext(scope) {
   const csv = scopeCsv(scope);
 
   const initiatives = await query(`
-    SELECT r.*, r.bu_code
+    SELECT r.*
     FROM dbo.vw_initiative_rollup r
     JOIN dbo.business_units b ON b.code = r.bu_code
     ${SCOPE_JOIN}`, { scopeCsv: csv });
 
   const monthRows = await query(`
-    SELECT m.id, m.initiative_id, CONVERT(char(10), m.period, 23) AS period,
+    SELECT m.id, m.initiative_id, m.period,
            m.plan_cr, m.actual_cr, m.actual_status, m.remarks,
            m.submitted_by, m.submitted_at, m.approved_by, m.approved_at, m.rejection_note
     FROM dbo.initiative_months m
@@ -295,8 +311,7 @@ async function getInitiative(id, scope) {
   if (!row) return null;
 
   const [months, tasks, milestones, risks, comments] = await Promise.all([
-    query(`SELECT m.*, CONVERT(char(10), m.period, 23) AS period
-           FROM dbo.initiative_months m WHERE m.initiative_id = @id ORDER BY m.period`, { id: Number(id) }),
+    query(`SELECT m.* FROM dbo.initiative_months m WHERE m.initiative_id = @id ORDER BY m.period`, { id: Number(id) }),
     query(`SELECT t.*, u.name AS assignee_name FROM dbo.tasks t
            LEFT JOIN dbo.users u ON u.id = t.assignee_id
            WHERE t.initiative_id = @id ORDER BY t.id`, { id: Number(id) }),
@@ -338,9 +353,13 @@ async function createInitiative(payload, actor) {
   const periods = M.fyPeriods(s['reporting.fy_start'], 12);
 
   const id = await transaction(async (run) => {
+    // Next free number after the highest existing BU-nnn code. A COUNT()+1
+    // collides as soon as a CSV load has used its own numbering or an
+    // initiative has been retired, and codes are UNIQUE.
     const seq = await run(`
-      SELECT COUNT(*) + 1 AS n FROM dbo.initiatives i
-      JOIN dbo.business_units b ON b.id = i.business_unit_id WHERE b.code = @bu`, { bu });
+      SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(code, LEN(@bu) + 2, 10))), 0) + 1 AS n
+      FROM dbo.initiatives WITH (UPDLOCK, HOLDLOCK)
+      WHERE code LIKE @bu + '-%'`, { bu });
     const code = payload.code || `${bu}-${String(seq[0].n).padStart(3, '0')}`;
 
     const inserted = await run(`
@@ -428,7 +447,7 @@ async function setPlan(initiativeId, entries, actor) {
     }
   });
   await audit(actor, 'plan.update', 'initiative', Number(initiativeId), `${entries.length} month(s) updated`);
-  return query(`SELECT *, CONVERT(char(10), period, 23) AS period
+  return query(`SELECT *
                 FROM dbo.initiative_months WHERE initiative_id = @id ORDER BY period`,
   { id: Number(initiativeId) });
 }
@@ -467,7 +486,7 @@ async function saveActual(initiativeId, period, payload, actor) {
   await audit(actor, submitting ? 'actual.submit' : 'actual.save', 'initiative_month', existing.id,
     `${M.periodLabel(period)} = ${payload.actual_cr}`);
 
-  return queryOne(`SELECT *, CONVERT(char(10), period, 23) AS period
+  return queryOne(`SELECT *
                    FROM dbo.initiative_months WHERE id = @id`, { id: existing.id });
 }
 
@@ -484,7 +503,7 @@ async function decideActual(monthId, decision, actor, note) {
   { id: Number(monthId), status, actor: actor.id, note: note || 'Returned for revision.' });
 
   await audit(actor, `actual.${decision}`, 'initiative_month', Number(monthId), note || '');
-  return queryOne(`SELECT *, CONVERT(char(10), period, 23) AS period
+  return queryOne(`SELECT *
                    FROM dbo.initiative_months WHERE id = @id`, { id: Number(monthId) });
 }
 
@@ -495,7 +514,7 @@ async function approvalQueue(scope, filters = {}) {
   if (filters.period) { params.period = { type: sql.Date, value: new Date(filters.period) }; extra += ' AND q.period = @period'; }
 
   const rows = await query(`
-    SELECT q.*, CONVERT(char(10), q.period, 23) AS period
+    SELECT q.*
     FROM dbo.vw_approval_queue q
     JOIN dbo.business_units b ON b.code = q.bu_code
     ${SCOPE_JOIN}

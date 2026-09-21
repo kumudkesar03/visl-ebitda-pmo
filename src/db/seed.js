@@ -108,7 +108,8 @@ async function main() {
  *
  * Expected columns (header row required, case-insensitive):
  *   code, title, department, owner, category, target_cr,
- *   and one column per month named Apr-26, May-26, ... Mar-27
+ *   and one column per month: Apr-26, May-26, ... Mar-27 ("Apr 26" or
+ *   "Apr-2026" also accepted)
  *
  * The monthly columns are checked against target_cr before anything is
  * written. A plan that does not foot to its own target is the single most
@@ -130,9 +131,11 @@ async function loadPlan(query, file, bu) {
 
   const header = Object.keys(rows[0]);
   const lower = Object.fromEntries(header.map((h) => [h.toLowerCase().trim(), h]));
+  // "Apr 26", "Apr-26", "APR_26", "Apr'26" and "Apr-2026" are all the same month.
+  const norm = (h) => String(h).toLowerCase().replace(/[\s\-_'’]/g, '').replace(/^([a-z]{3})20(\d{2})$/, '$1$2');
   const monthCols = periods.map((p, i) => {
-    const wanted = monthLabels[i].toLowerCase();
-    return header.find((h) => h.toLowerCase().trim() === wanted) || null;
+    const wanted = norm(monthLabels[i]);
+    return header.find((h) => norm(h) === wanted) || null;
   });
 
   const missing = monthCols.filter((c) => !c).length;

@@ -180,22 +180,24 @@ that leadership has already been shown.
 
 ## Active Directory
 
-`AUTH_MODE=local` is sufficient for development and for the review build.
-
-Section 13.4 of the handover flags that ESL, IOB and FACOR appear to sit behind
-**different directories** — the tenant shows a separate directory sync account
-per business. The answer changes
-the work materially, so `AD_DIRECTORIES` is **keyed by business unit code from
-the start** rather than being a single flat block that would need restructuring
-later:
+Sign-in against Active Directory over LDAPS is implemented (`src/services/ldap.js`).
+VISL uses **two directories**: **ESL**, and **IOB**, which also serves **FACOR**.
+Each user signs in against the directory that serves their home business unit;
+group-level users (home unit VISL) are tried against both.
 
 ```ini
-AD_DIRECTORIES={"ESL":{"url":"ldaps://esl-dc:636","baseDN":"DC=esl,DC=local"}, "IOB":{...}}
+AUTH_MODE=hybrid
+AD_DIRS=ESL,IOB
+AD_ESL_URL=ldaps://esl-dc:636    AD_ESL_UNITS=ESL        ...
+AD_IOB_URL=ldaps://iob-dc:636    AD_IOB_UNITS=IOB,FACOR  ...
 ```
 
-Confirm the directory topology with the AD team before building this out. Role
-and home business unit remain application-side regardless: AD answers *who you
-are*, this system answers *what you may see*.
+Role and home business unit remain application-side: AD answers *who you are*,
+this system answers *what you may see*. Accounts are marked **Active Directory**
+or **Local** under Users & roles. Test with `npm run ad:test`.
+
+Full explanation, the request for each AD team and troubleshooting:
+**HANDOVER.txt, section 9**.
 
 ---
 

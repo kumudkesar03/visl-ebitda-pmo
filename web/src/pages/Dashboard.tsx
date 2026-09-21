@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../lib/api';
 import { useApp } from '../context/AppContext';
 import { PageHeader, SyntheticBanner } from '../components/Shell';
-import { BuPicker, WindowNote } from '../components/BuPicker';
+import { WindowNote } from '../components/BuPicker';
 import { Card, Kpi, RatioKpi, KpiSkeleton, HealthDot, BuTag, Empty, DualBar, StatusBadge } from '../components/Primitives';
 import { MonthlyDelivery, ComparisonBars, MixDoughnut } from '../components/Charts';
 import { Icon } from '../components/Icons';
@@ -49,7 +49,6 @@ export function Dashboard() {
           ? <WindowNote label={`${session.settings.fy_label} · ${data.window.label}`} closedCount={data.window.closedCount} totalCount={data.window.totalCount} />
           : 'Loading…'}
       >
-        <BuPicker />
         {can('report:export') && (
           <a className="btn btn-outline btn-sm" href={`/api/export/matrix.xlsx${qs({ bu })}`}>
             <Icon name="download" /> Export

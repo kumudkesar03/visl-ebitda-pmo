@@ -7,6 +7,7 @@ const repo = require('../data');
 const rbac = require('../domain/rbac');
 const H = require('../domain/hierarchy');
 const auth = require('../middleware/auth');
+const ldap = require('../services/ldap');
 
 const router = express.Router();
 
@@ -25,11 +26,31 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'Enter your user ID and password.' });
     }
 
-    const user = await repo.findUserByEmployeeId(employeeId);
+    // People type DOMAIN\user or user@domain as often as the bare ID.
+    const user = await repo.findUserByEmployeeId(ldap.normaliseUsername(employeeId))
+      || await repo.findUserByEmployeeId(String(employeeId).trim());
+
     // Same message whether the account is unknown or the password is wrong, so
     // the form cannot be used to enumerate valid employee IDs.
-    const ok = user && user.is_active && await repo.verifyPassword(user, password);
-    if (!ok) return res.status(401).json({ error: 'Incorrect user ID or password.' });
+    const refuse = () => res.status(401).json({ error: 'Incorrect user ID or password.' });
+    if (!user || !user.is_active) return refuse();
+
+    const mode = env.auth.mode;
+    if (user.ad_user) {
+      // Directory accounts. In AUTH_MODE=local the directory is not consulted.
+      if (mode === 'local') return refuse();
+      const result = await ldap.authenticate(user, password);
+      if (result.error && !result.ok) {
+        // The directory could not be reached or rejected our configuration.
+        // Say so, rather than blaming the user's password for an outage.
+        return res.status(503).json({ error: 'The company directory could not be reached. Please try again shortly, or contact the PMO office.' });
+      }
+      if (!result.ok) return refuse();
+    } else {
+      // Local accounts: AUTH_MODE=local, or hybrid (break-glass admin, service users).
+      if (mode === 'ad') return refuse();
+      if (!await repo.verifyPassword(user, password)) return refuse();
+    }
 
     await repo.touchLogin(user.id);
     const token = auth.sign(user);

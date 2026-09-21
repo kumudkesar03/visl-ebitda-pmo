@@ -240,9 +240,20 @@ CREATE TABLE dbo.milestones (
     completed_at  DATE NULL,
     status        NVARCHAR(20) NOT NULL DEFAULT 'open',
     sort_order    INT NOT NULL DEFAULT 100,
+    created_by    INT NULL REFERENCES dbo.users(id),
     created_at    DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at    DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT ck_ms_status CHECK (status IN ('open','achieved','missed','cancelled'))
 );
+GO
+
+/* Upgrade path for databases created before milestones carried these two
+   columns. The application writes both on every insert and update. */
+IF COL_LENGTH('dbo.milestones', 'created_by') IS NULL
+    ALTER TABLE dbo.milestones ADD created_by INT NULL REFERENCES dbo.users(id);
+IF COL_LENGTH('dbo.milestones', 'updated_at') IS NULL
+    ALTER TABLE dbo.milestones ADD updated_at DATETIME2 NOT NULL
+        CONSTRAINT df_milestones_updated_at DEFAULT SYSUTCDATETIME();
 GO
 
 IF OBJECT_ID('dbo.risks', 'U') IS NULL

@@ -2,9 +2,11 @@
   "name": "visl-ebitda-pmo",
   "version": "1.0.0",
   "private": true,
-  "description": "VISL EBITDA Drive PMO - consolidated cost-reduction governance across ESL, Iron Ore Business (IOK/IOG/VAB/HO) and FACOR",
+  "description": "VISL EBITDA Drive PMO - consolidated cost-reduction governance for Vedanta Iron & Steel (ESL, IOB, FACOR)",
   "main": "server.js",
-  "engines": { "node": ">=18.18" },
+  "engines": {
+    "node": ">=18.18"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "concurrently -n api,web -c blue,magenta \"node --watch server.js\" \"vite\"",
@@ -16,7 +18,10 @@
     "seed": "node src/db/seed.js",
     "setup": "npm run migrate && npm run seed",
     "mail:test": "node src/scripts/mailTest.js",
-    "check:metrics": "node src/scripts/reconcile.js"
+    "ad:test": "node src/scripts/adTest.js",
+    "package": "node src/scripts/package.js",
+    "check:metrics": "node src/scripts/reconcile.js",
+    "test:e2e": "node src/scripts/e2e.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -35,6 +40,8 @@
     "nodemailer": "^6.9.14"
   },
   "devDependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@tanstack/react-query": "^5.62.0",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",

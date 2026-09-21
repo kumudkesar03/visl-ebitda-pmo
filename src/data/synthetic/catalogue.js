@@ -24,16 +24,16 @@
 
 /** EBITDA levers. The category axis on every executive chart. */
 const CATEGORIES = [
-  { code: 'RAW', name: 'Raw material & sourcing', accent: '#0b5cff' },
-  { code: 'ENE', name: 'Energy & fuel', accent: '#b45309' },
-  { code: 'LOG', name: 'Logistics & freight', accent: '#08875b' },
-  { code: 'YLD', name: 'Yield & recovery', accent: '#6941c6' },
-  { code: 'CON', name: 'Contracts & manpower', accent: '#0891b2' },
-  { code: 'SPR', name: 'Stores & spares', accent: '#c0332e' },
-  { code: 'WCP', name: 'Working capital', accent: '#ca8a04' },
-  { code: 'SLS', name: 'Sales realisation', accent: '#be185d' },
-  { code: 'OVH', name: 'Overheads & admin', accent: '#475569' },
-  { code: 'DIG', name: 'Digital & automation', accent: '#7c3aed' },
+  { code: 'RAW', name: 'Raw material & sourcing', accent: '#0062ae' },
+  { code: 'ENE', name: 'Energy & fuel', accent: '#d08a1c' },
+  { code: 'LOG', name: 'Logistics & freight', accent: '#4d8f2a' },
+  { code: 'YLD', name: 'Yield & recovery', accent: '#6a55a8' },
+  { code: 'CON', name: 'Contracts & manpower', accent: '#1f8a7a' },
+  { code: 'SPR', name: 'Stores & spares', accent: '#b4452f' },
+  { code: 'WCP', name: 'Working capital', accent: '#8a9a1e' },
+  { code: 'SLS', name: 'Sales realisation', accent: '#b0487a' },
+  { code: 'OVH', name: 'Overheads & admin', accent: '#5f6b76' },
+  { code: 'DIG', name: 'Digital & automation', accent: '#2c4f9e' },
 ];
 
 /**

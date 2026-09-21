@@ -55,7 +55,7 @@ export function MonthlyDelivery({ series, closedThrough, height = 260 }: {
               {
                 label: 'Plan',
                 data: series.map((s) => s.plan_cr),
-                backgroundColor: series.map((_, i) => (isOpen(i) ? 'rgba(148,163,184,.35)' : CHART.plan)),
+                backgroundColor: series.map((_, i) => (isOpen(i) ? 'rgba(151,156,161,.28)' : CHART.plan)),
                 borderRadius: 3,
                 barPercentage: 0.92,
                 categoryPercentage: 0.62,
@@ -145,7 +145,7 @@ export function CumulativeDelivery({ series, closedThrough, target, height = 260
               ...(target ? [{
                 label: 'Full-year target',
                 data: series.map(() => target),
-                borderColor: '#c0332e',
+                borderColor: CHART.target,
                 borderWidth: 1.4,
                 borderDash: [5, 4],
                 fill: false,
@@ -159,7 +159,7 @@ export function CumulativeDelivery({ series, closedThrough, target, height = 260
       <Legend items={[
         { label: 'Cumulative plan', color: CHART.plan, line: true },
         { label: 'Cumulative booked', color: CHART.booked, line: true },
-        ...(target ? [{ label: 'Full-year target', color: '#c0332e', line: true }] : []),
+        ...(target ? [{ label: 'Full-year target', color: CHART.target, line: true }] : []),
       ]} />
     </>
   );
@@ -187,7 +187,7 @@ export function ComparisonBars({ rows, height = 250 }: {
             indexAxis: 'y' as const,
             scales: {
               x: { beginAtZero: true, grid: { color: CHART.grid }, border: { display: false }, ticks: { color: CHART.axis } },
-              y: { grid: { display: false }, border: { color: CHART.grid }, ticks: { color: '#334155', font: { size: 11.5 } } },
+              y: { grid: { display: false }, border: { color: CHART.grid }, ticks: { color: '#3d434a', font: { size: 11.5 } } },
             },
             plugins: { tooltip: { mode: 'index', intersect: false } } as any,
           }}
@@ -264,7 +264,7 @@ export function ConcentrationCurve({ points, height = 200 }: {
             label: 'Cumulative share of target',
             data: points.map((p) => p.cumulative_pct),
             borderColor: CHART.series[3],
-            backgroundColor: 'rgba(105,65,198,.10)',
+            backgroundColor: 'rgba(0,98,174,.08)',
             borderWidth: 2.2,
             fill: true,
             tension: 0.3,

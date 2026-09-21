@@ -33,7 +33,14 @@ const env = {
 
   db: {
     host: process.env.DB_HOST || '',
+    // Named instance (SERVER\INSTANCE). When set, the port is resolved by the
+    // SQL Browser service (UDP 1434) and DB_PORT is ignored.
+    instance: process.env.DB_INSTANCE || '',
     port: int(process.env.DB_PORT, 1433),
+    // sql  - SQL Server login (DB_USER / DB_PASSWORD). The recommended default.
+    // ntlm - a Windows / domain account (DB_DOMAIN + DB_USER / DB_PASSWORD).
+    auth: (process.env.DB_AUTH || 'sql').toLowerCase(),
+    domain: process.env.DB_DOMAIN || '',
     name: process.env.DB_NAME || 'VISL_PMO',
     user: process.env.DB_USER || '',
     password: process.env.DB_PASSWORD || '',
@@ -54,12 +61,13 @@ const env = {
     cookieSecure: bool(process.env.COOKIE_SECURE, false),
   },
 
-  /* Per-business-unit Active Directory. text.txt section 13.4 records that ESL,
-     IOB and FACOR appear to sit behind different directories, so the config is
-     keyed by BU code from the start rather than being one flat block. */
+  /* Active Directory over LDAP. See src/services/ldap.js and HANDOVER.txt s.9.
+     One directory is configured with the flat AD_* values; several (ESL, IOB and
+     FACOR may sit behind different forests - text.txt 13.4) with AD_DIRECTORIES,
+     keyed by business unit code. Either way it resolves to the same shape. */
   ad: {
-    enabled: bool(process.env.AD_ENABLED, false),
-    directories: safeJson(process.env.AD_DIRECTORIES, {}),
+    directories: adDirectories(),
+    timeoutMs: int(process.env.AD_TIMEOUT_MS, 10000),
   },
 
   mail: {
@@ -88,11 +96,93 @@ const env = {
 
 function safeJson(raw, dflt) {
   if (!raw) return dflt;
-  try { return JSON.parse(raw); } catch { return dflt; }
+  try { return JSON.parse(raw); } catch {
+    throw new Error('AD_DIRECTORIES is not valid JSON. It must be one line of JSON - see HANDOVER.txt s.9.');
+  }
+}
+
+/**
+ * Directory definitions.
+ *
+ * VISL signs people in against TWO Active Directory forests:
+ *     ESL  directory - serves ESL
+ *     IOB  directory - serves IOB (IOK, IOG, VAB, HO) and FACOR
+ * so the primary form is one block of variables per directory:
+ *
+ *     AD_DIRS=ESL,IOB
+ *     AD_ESL_URL=...   AD_ESL_BASE_DN=...   AD_ESL_BIND_DN=...   AD_ESL_BIND_PASSWORD=...
+ *     AD_ESL_UNITS=ESL
+ *     AD_IOB_URL=...   ...                                     AD_IOB_UNITS=IOB,FACOR
+ *
+ * A directory serves the units in its _UNITS list and everything beneath them.
+ * Also accepted: a single directory as flat AD_URL / AD_BASE_DN / ..., or
+ * AD_DIRECTORIES as one line of JSON (bind passwords then named by
+ * bindPasswordEnv so the JSON never carries a secret).
+ */
+function adDirectories() {
+  let raw = {};
+  const envDir = (prefix) => ({
+    url: process.env[`${prefix}URL`],
+    baseDN: process.env[`${prefix}BASE_DN`],
+    bindDN: process.env[`${prefix}BIND_DN`],
+    bindPassword: process.env[`${prefix}BIND_PASSWORD`],
+    upnSuffix: process.env[`${prefix}UPN_SUFFIX`],
+    domain: process.env[`${prefix}DOMAIN`],
+    userFilter: process.env[`${prefix}USER_FILTER`],
+    caFile: process.env[`${prefix}CA_FILE`],
+    startTLS: process.env[`${prefix}STARTTLS`],
+    rejectUnauthorized: process.env[`${prefix}TLS_REJECT_UNAUTHORIZED`],
+    units: process.env[`${prefix}UNITS`],
+  });
+
+  if (process.env.AD_DIRECTORIES) {
+    raw = safeJson(process.env.AD_DIRECTORIES, {});
+  } else if (process.env.AD_DIRS) {
+    for (const key of process.env.AD_DIRS.split(',').map((k) => k.trim().toUpperCase()).filter(Boolean)) {
+      raw[key] = envDir(`AD_${key}_`);
+    }
+  } else if (process.env.AD_URL) {
+    raw[(process.env.AD_BU || 'VISL').toUpperCase()] = envDir('AD_');
+  }
+
+  const out = {};
+  for (const [key, d] of Object.entries(raw)) {
+    const k = String(key).toUpperCase();
+    if (!d || !d.url) {
+      if (process.env.AD_DIRS) throw new Error(`AD_DIRS lists ${k} but AD_${k}_URL is not set.`);
+      continue;
+    }
+    const units = Array.isArray(d.units) ? d.units : String(d.units || k).split(',');
+    out[k] = {
+      key: k,
+      url: d.url,
+      baseDN: d.baseDN || '',
+      bindDN: d.bindDN || '',
+      bindPassword: d.bindPasswordEnv ? (process.env[d.bindPasswordEnv] || '') : (d.bindPassword || ''),
+      upnSuffix: d.upnSuffix || '',
+      domain: d.domain || '',
+      // {{username}} is replaced by the escaped sAMAccountName.
+      userFilter: d.userFilter || '(&(objectCategory=person)(objectClass=user)(sAMAccountName={{username}}))',
+      caFile: d.caFile || '',
+      startTLS: bool(d.startTLS, false),
+      rejectUnauthorized: bool(d.rejectUnauthorized, true),
+      units: units.map((u) => String(u).trim().toUpperCase()).filter(Boolean),
+    };
+  }
+  return out;
 }
 
 if (env.NODE_ENV === 'production' && env.auth.jwtSecret === 'dev-only-secret-change-me') {
   throw new Error('JWT_SECRET must be set to a real value before running in production.');
+}
+if (!['local', 'ad', 'hybrid'].includes(env.auth.mode)) {
+  throw new Error(`AUTH_MODE must be "local", "ad" or "hybrid", received "${env.auth.mode}".`);
+}
+if (env.auth.mode !== 'local' && !Object.keys(env.ad.directories).length) {
+  throw new Error(`AUTH_MODE=${env.auth.mode} but no directory is configured. Set AD_DIRS with AD_<KEY>_URL etc. (see .env.example and HANDOVER.txt s.9).`);
+}
+if (!['sql', 'ntlm'].includes(env.db.auth)) {
+  throw new Error(`DB_AUTH must be "sql" or "ntlm", received "${env.db.auth}".`);
 }
 if (!['synthetic', 'mssql'].includes(env.DATA_MODE)) {
   throw new Error(`DATA_MODE must be "synthetic" or "mssql", received "${env.DATA_MODE}".`);

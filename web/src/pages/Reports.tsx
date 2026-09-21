@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../lib/api';
 import { useApp } from '../context/AppContext';
 import { PageHeader, SyntheticBanner } from '../components/Shell';
-import { BuPicker } from '../components/BuPicker';
 import { Card, Empty, Loading, BuTag, StatusBadge, ProgressBar, Alert } from '../components/Primitives';
 import { Icon } from '../components/Icons';
 import { cr, crSigned, pct, dateShort, varianceTone, achievementTone, relTime, initials } from '../lib/format';
@@ -52,7 +51,6 @@ export function Matrix() {
   return (
     <>
       <PageHeader title="Savings matrix" subtitle={data ? `${data.rows.length} initiatives · ${data.node.name}` : 'Loading…'}>
-        <BuPicker />
         <div className="btn-group">
           {(['plan', 'actual', 'both'] as const).map((m) => (
             <button key={m} className={`btn btn-outline btn-sm ${mode === m ? 'on' : ''}`} onClick={() => setMode(m)}>
@@ -186,7 +184,6 @@ export function Leaderboard() {
   return (
     <>
       <PageHeader title="Performance" subtitle="Ranked by achievement against plan for closed months">
-        <BuPicker />
       </PageHeader>
 
       <div className="content">
@@ -292,7 +289,6 @@ export function Tasks() {
   return (
     <>
       <PageHeader title="Tasks" subtitle={data ? `${data.rows.length} tasks · ${data.overdue} overdue` : 'Loading…'}>
-        <BuPicker />
       </PageHeader>
 
       <div className="content">
