@@ -19,19 +19,19 @@ Chart.register(
   Tooltip, Legend, Filler, BarController, LineController, DoughnutController,
 );
 
-Chart.defaults.font.family = '"Segoe UI", -apple-system, Roboto, Helvetica, Arial, sans-serif';
+Chart.defaults.font.family = '"IBM Plex Sans", "Segoe UI", -apple-system, Roboto, Helvetica, Arial, sans-serif';
 Chart.defaults.font.size = 11.5;
-Chart.defaults.color = '#64748b';
+Chart.defaults.color = '#6b7178';
 Chart.defaults.plugins.legend.display = false;
 Chart.defaults.maintainAspectRatio = false;
 Chart.defaults.animation = { duration: 380 };
 
 Object.assign(Chart.defaults.plugins.tooltip, {
-  backgroundColor: '#0a1b33',
+  backgroundColor: '#1b1f23',
   titleFont: { size: 12, weight: 600 },
   bodyFont: { size: 12 },
   padding: 10,
-  cornerRadius: 6,
+  cornerRadius: 3,
   displayColors: true,
   boxWidth: 9,
   boxHeight: 9,

@@ -1,0 +1,1104 @@
+===============================================================================
+  VISL EBITDA DRIVE PMO  -  COMPLETE HANDOVER
+  Vedanta Iron & Steel  |  ESL  |  Iron Ore Business (IOK, IOG, VAB, HO)  |  FACOR
+-------------------------------------------------------------------------------
+  Document version : 2.0                      Date : 21 September 2026
+  Application      : visl-ebitda-pmo 1.0.0    Repo : github.com/kumudkesar03/visl-ebitda-pmo
+  Owner            : Kumud Kesar, Lead - Digital
+  Status           : Built and tested on synthetic data. Ready to deploy to the
+                     company SQL Server with Active Directory (LDAP) sign-in.
+===============================================================================
+
+This one file contains everything needed to understand, install, configure,
+secure, run and support the application: the insights behind it, what it does,
+who can do what, the SQL Server (SSMS) architecture, Active Directory over LDAP,
+deployment on the company server, the go-live checklist and day-to-day
+operations. Nothing here depends on any other document.
+
+
+-------------------------------------------------------------------------------
+CONTENTS
+-------------------------------------------------------------------------------
+   0.  How to use this document (and the prompt for Copilot)
+   1.  Summary
+   2.  Insights - what was learnt, and the design decisions it drove
+   3.  The business model: hierarchy, vocabulary, formulas, monthly cycle
+   4.  Functionality - every screen
+   5.  Access provisions - roles, scope, approvals, user provisioning
+   6.  Architecture
+   7.  Data model
+   8.  SQL Server (SSMS) - architecture and step-by-step setup
+   9.  Active Directory over LDAP - two directories (ESL, IOB+FACOR)
+  10.  Mail and notifications (SMTP)
+  11.  Application server deployment
+  12.  Go-live checklist and acceptance tests
+  13.  Operations runbook
+  14.  Security and credentials
+  15.  Configuration reference (.env)
+  16.  Command reference
+  17.  Known gaps and open decisions
+  18.  Change log
+  19.  Worksheet - values to collect before installation
+
+
+===============================================================================
+0.  HOW TO USE THIS DOCUMENT
+===============================================================================
+
+WHO IT IS FOR
+  - The person installing it (IT / infrastructure / DBA)
+  - The AD administrators of the ESL domain and of the IOB domain
+  - The PMO team who will run the monthly cycle
+  - Anyone supporting or extending the code later
+  - An AI assistant (e.g. the company Copilot) that knows the company's own
+    servers and is helping someone through the setup
+
+THE FASTEST PATH TO A RUNNING SYSTEM
+  1. Fill in the worksheet in section 19 (server names, DNs, accounts).
+  2. DBA: section 8 (SQL Server). About 1 hour.
+  3. AD teams: section 9 (LDAP). Service accounts + certificates; ~1 day lead time.
+  4. IT: section 11 (application server). About 1-2 hours.
+  5. Everyone: section 12 (go-live checklist).
+
+PROMPT FOR THE COMPANY COPILOT
+  Paste the whole of this file into Copilot, then paste this prompt:
+
+  ----------------------------------------------------------------------------
+  You are helping me install the "VISL EBITDA Drive PMO" web application on
+  our company infrastructure. The attached HANDOVER.txt is the complete and
+  authoritative specification. Using what you know about OUR environment -
+  our SQL Server instances and how we administer them in SSMS, our Active
+  Directory domains for ESL and for IOB (which also covers FACOR), our
+  certificate authorities, our Windows/Linux application servers, our
+  firewalls, SMTP relay and change process - do the following:
+
+   1. Fill in every item of the worksheet in section 19 with our real
+      values, and list anything you cannot determine and who I should ask.
+   2. Produce the exact, ready-to-run version of sql/00_server_setup.sql
+      for our SQL Server (instance name, file paths, backup paths).
+   3. Produce the complete .env file for our production server (leave
+      passwords as <<SET ME>>; never invent secrets).
+   4. Produce the two AD service-account request tickets (ESL domain and
+      IOB domain) using section 9.6, and the firewall request using 11.3.
+   5. Walk me through sections 8, 9, 11 and 12 step by step on our systems,
+      stopping after each step so I can confirm the result.
+  Follow the document's rules: least-privilege logins, LDAPS only, no
+  secret containing # $ ; ! or quotes, and never commit .env.
+  ----------------------------------------------------------------------------
+
+CONVENTIONS
+  <<...>>      a value you must supply
+  npm run x    run from the application folder on the application server
+  SSMS         SQL Server Management Studio, connected as stated in each step
+
+
+===============================================================================
+1.  SUMMARY
+===============================================================================
+
+WHAT IT IS
+  A web application that governs the Vedanta Iron & Steel (VISL) EBITDA
+  cost-reduction drive across all three businesses and every reporting unit
+  beneath them. Owners record monthly savings against a plan; the PMO office
+  approves them; only approved figures count; leadership sees one consolidated,
+  trustworthy position that reconciles exactly from unit to group.
+
+      VISL  Vedanta Iron & Steel (consolidated)
+        +-- ESL     ESL Steel Limited
+        +-- IOB     Iron Ore Business (consolidated)
+        |     +-- IOK   Iron Ore Karnataka
+        |     +-- IOG   Iron Ore Goa
+        |     +-- VAB   Value Added Business
+        |     +-- HO    IOB Head Office
+        +-- FACOR   Ferro Alloys Corporation
+
+WHO USES IT
+  CEO / CFO / business heads   Executive board: will the year land?
+  VISL PMO                     Governs the whole drive
+  Business-unit PMOs           Govern their own unit; approve monthly actuals
+  Initiative owners            Plan, book actuals, run tasks and risks
+  Contributors / viewers       Work tasks; read-only views
+
+WHAT IS DONE
+  - Complete application: executive board, dashboard, savings matrix,
+    performance, initiatives with a monthly plan/actual grid, tasks,
+    milestones, risks, comments, approvals with maker-checker, audit trail,
+    notifications, mail outbox, Excel export, user and policy administration.
+  - Access control by business unit, enforced at the data layer.
+  - SQL Server schema, reference data, consolidation views and a
+    verification script; least-privilege server setup script.
+  - Active Directory sign-in over LDAPS with TWO directories: ESL, and IOB
+    (which also serves FACOR). Local accounts kept for break-glass use.
+  - Automated end-to-end test (158 checks) and a reconciliation gate
+    (72 checks), both passing.
+  - Vedanta Iron & Steel visual identity (no ESL branding anywhere).
+
+WHAT IS STILL NEEDED (owned outside the code - see section 17)
+  - Real savings plans from the ESL, IOB and FACOR PMO teams.
+  - Department lists per unit.
+  - AD service accounts and CA certificates from the two AD teams.
+  - A server for the application and a database on SQL Server.
+  - Leadership decisions on approval policy and cross-unit visibility.
+
+
+===============================================================================
+2.  INSIGHTS - WHAT WAS LEARNT, AND THE DECISIONS IT DROVE
+===============================================================================
+
+This application succeeds the ESL PMO Tracker. That build and its
+implementation log recorded a series of defects and deployment traps. Each is
+closed here by design, not by patch. They are listed because they are the
+things most likely to be "helpfully" reintroduced later.
+
+2.1  Business-unit data leaked across units            -> closed at the data layer
+     In the ESL tracker no screen filtered by business unit: every user saw
+     every unit, and an ESL PMO could approve IOB's actuals. Here the user's
+     visible units ("scope") are computed ONCE per request and every database
+     query filters on it. A query called without scope returns nothing, so a
+     mistake shows as an empty screen, never as another unit's figures.
+
+2.2  "Plan achievement 396.8%"                          -> ratios carry their basis
+     Three months of actuals were divided by one month of plan. Now a
+     percentage can only be built by one function that returns the numerator,
+     denominator, basis and window together, and every tile prints its basis.
+     Two different figures are shown side by side and labelled:
+       Achievement (plan-to-date) = booked / plan, closed months only
+       Target delivered (full year) = booked / full-year target
+
+2.3  Consolidated totals multiplied ("fan-out")         -> separate aggregation passes
+     A view joined initiatives to monthly totals and repeated each total once
+     per initiative (VISL plan 670 Cr against a 105 Cr target). Counts and
+     money are now aggregated separately and joined 1:1 per unit, and a
+     reconciliation gate checks every parent equals the sum of its children.
+
+2.4  Initiatives on roll-up nodes double count          -> leaf-only rule, 3 layers
+     Initiatives may only belong to ESL, IOK, IOG, VAB, HO or FACOR - never to
+     VISL or IOB. Enforced in code, in the API and by a database CHECK.
+
+2.5  Only approved actuals count                        -> governance as arithmetic
+     draft -> submitted -> approved. "Booked" = approved only. Submitted is
+     shown separately as pipeline. An approved month is locked; reopening it
+     is an explicit, audited act. Nobody can approve their own submission.
+
+2.6  Deployment traps from the ESL setup                -> written into the scripts
+     - dotenv silently cuts a value at '#': the DB password "failed" for half
+       a day. RULE: secrets use only letters, digits, hyphen, underscore.
+     - Error 916 / empty sys.tables: sessions sitting on master. The migrator
+       refuses to run unless connected to the named database.
+     - Seed aborted on a bad CSV and left no admin: the admin password is now
+       set by a separate step that a bad data file cannot affect.
+     - Department name collisions across units: names are unit-qualified,
+       e.g. "Commercial (IOK)".
+     - Serverless Azure auto-pause made the first click take a minute:
+       timeouts raised; provisioned tier / on-prem recommended.
+     - Hard-coded server path in the PM2 config: resolved at runtime.
+
+2.7  Defects found and fixed during the September 2026 review
+     - Bulk approve/return never worked (route order). Fixed.
+     - SQL mode: queries selected the same column twice, which the driver
+       returns as an array; every dashboard would have read zero. Fixed, and
+       all SQL DATE values are now normalised to 'YYYY-MM-DD'.
+     - Milestones table lacked two columns the code writes. Fixed + upgrade.
+     - Users created in the admin screen had no way to sign in on the real
+       database (no password field, no AD flag). Fixed: sign-in method +
+       password on the form.
+     - Initiative codes could collide after a CSV load. Fixed.
+     - CSV month headings: "Apr-26" and "Apr 26" both accepted now.
+     - Plan-vs-booked bars on the initiative list never rendered. Fixed.
+
+2.8  Design principles worth keeping
+     - Active Directory proves WHO you are; this application decides WHAT you
+       may see. AD never grants access by itself.
+     - The route layer never knows which database it talks to (synthetic or
+       SQL Server). The whole system can be demonstrated with no database.
+     - Mail is reviewable before it is sent ("outbox mode" is the default).
+     - Nothing is loaded from the internet at runtime (plant networks).
+
+
+===============================================================================
+3.  THE BUSINESS MODEL
+===============================================================================
+
+3.1  VOCABULARY
+  Target            Full-year commitment of an initiative (Rs Cr).
+  Plan              The target spread over 12 months (Apr-Mar). Must foot to target.
+  Actual            The saving an owner reports for a month.
+  Booked / Banked   APPROVED actuals only. This is "the savings number".
+  Pipeline          Submitted, awaiting approval. Real work, not yet counted.
+  Closed month      Settled for reporting (setting reporting.closed_through).
+  Collection month  The month owners are entering now (reporting.submission_period).
+  Variance          Booked minus plan. Negative early in a month is usually timing.
+  Forecast FY       Booked to date + plan for the months still open.
+  Unplanned gap     Target not covered by booked + pipeline + remaining plan.
+
+3.2  FORMULAS (all in src/domain/metrics.js; mirrored in sql/03_views.sql)
+  plan_ptd          = sum(plan)   over closed months
+  booked_ptd        = sum(actual where approved) over closed months
+  achievement_ptd   = booked_ptd / plan_ptd          (null if plan_ptd = 0)
+  target_delivered  = booked_fy / target             (booked, all months)
+  forecast_fy       = booked_fy + plan of open months
+  Money is carried at 4 decimals and rounded to 2 only for display.
+
+3.3  THE MONTHLY CYCLE
+  1st        PMO sets System > Reporting calendar > Collection month.
+  1st        Submission reminders go out (or run from Mail outbox).
+  1st-7th    Owners enter actuals on "My work" and submit.
+  5th-10th   Approvers work the Approvals queue (approve / return with reason).
+  10th       PMO moves "Closed through" forward - this publishes the month.
+  10th       Run npm run check:metrics and sql/04_verify.sql.
+  11th       Executive board reflects the closed month; print the board pack.
+
+3.4  APPROVAL POLICY (System > Approval policy - a setting, not code)
+                   IOK/IOG/VAB/HO approved by   ESL approved by   FACOR approved by
+  local            that unit's own PMO           ESL PMO           FACOR PMO
+  central (default) IOB PMO                      VISL PMO          VISL PMO
+  visl             VISL PMO                      VISL PMO          VISL PMO
+  Maker-checker: nobody approves an entry they submitted (any role).
+
+
+===============================================================================
+4.  FUNCTIONALITY - EVERY SCREEN
+===============================================================================
+
+Layout: a top bar (logo, menus, notifications, user), a business-unit strip on
+screens that report by unit (click VISL, ESL, IOB, IOK, IOG, VAB, HO or FACOR;
+you only see the units you are allowed to), then the page.
+
+SIGN-IN (/login)
+  Corporate user ID + password. AD users type their Windows logon name
+  (kumud.kesar, DOMAIN\kumud.kesar and kumud.kesar@domain all work) and their
+  AD password. In synthetic (demo) mode the page lists demo accounts.
+
+POSITION menu
+  Executive board   Full-year target, banked, achievement, target delivered,
+                    forecast; a bridge from target to banked; delivery curve;
+                    position by unit; concentration; initiatives needing
+                    attention. "Board pack" prints it.
+  Dashboard         KPIs, monthly delivery vs plan, portfolio health, by unit
+                    (or by department for a single unit), by EBITDA lever,
+                    at-risk and top-delivering initiatives. Export to Excel.
+  Savings matrix    Every initiative x 12 months, plan / actual / both.
+                    Excel export (Summary, Savings matrix, Initiative register).
+  Performance       Owners and departments ranked by achievement.
+
+DELIVERY menu
+  My work           The signed-in owner's submissions for the collection month
+                    and open tasks. Returned entries show the reason.
+  Initiatives       Register with filters (status, health, lever, search);
+                    "New initiative" (PMO roles). Opens the initiative page:
+                      Overview, Plan & actuals (12-month grid, edit plan,
+                      enter/submit actuals; approved months locked), Tasks,
+                      Milestones, Risks, Discussion (comments), Edit.
+  Tasks             All tasks in scope with overdue flags.
+
+GOVERNANCE menu (approvers)
+  Approvals         Queue of submitted actuals; approve, return with reason,
+                    bulk actions; rows outside your authority shown greyed
+                    with the reason.
+  Audit trail       Every sign-in, edit, approval and setting change.
+
+ADMINISTRATION menu (administrators)
+  Users & roles     Create / edit users: user ID, name, email, role, home
+                    business unit, SIGN-IN METHOD (Active Directory or Local
+                    password), password for local accounts, active flag.
+                    Shows exactly which units each account sees and can edit.
+  Access model      The live permission matrix and who-approves-whom table.
+  Mail outbox       Every message the system would send, previewable; run
+                    reminders / digest on demand.
+  System            Reporting calendar (closed through, collection month),
+                    approval policy, data/mail/auth mode.
+
+NOTIFICATIONS (bell)  In-app messages: submissions to approve, decisions.
+
+
+===============================================================================
+5.  ACCESS PROVISIONS
+===============================================================================
+
+5.1  ROLES
+  admin        All units. Everything, incl. users and system settings.
+  visl_pmo     All units. Full governance (create, edit, approve, reopen).
+  visl_exec    All units, READ-ONLY. CEO, CFO, business heads.
+  bu_pmo       Home unit + units beneath it. Governs and approves there.
+  owner        Home unit. Their own initiatives: plan, actuals, tasks, risks.
+  contributor  Home unit. Works assigned tasks, comments.
+  viewer       Home unit, READ-ONLY.
+
+5.2  SCOPE = HOME BUSINESS UNIT + EVERYTHING BENEATH IT
+  Home VISL + global role   sees VISL, ESL, IOB, IOK, IOG, VAB, HO, FACOR
+  Home IOB  + bu_pmo        sees IOB, IOK, IOG, VAB, HO
+  Home ESL  + bu_pmo        sees ESL
+  Home IOK  + owner         sees IOK
+  Writes are only ever against reporting units (never VISL or IOB).
+
+5.3  PERMISSION MATRIX            admin visl_pmo visl_exec bu_pmo owner contrib viewer
+  view initiatives / reports        x      x        x        x      x      x      x
+  export to Excel                   x      x        x        x      x
+  comment                           x      x        x        x      x      x
+  update assigned tasks             x      x                 x      x      x
+  edit own initiative/plan/actuals  x                               x
+  create / edit any initiative      x      x                 x
+  edit any plan, submit any actual  x      x                 x
+  approve / reopen actuals          x      x                 x
+  manage tasks & risks (any)        x      x                 x
+  audit trail                       x      x                 x
+  mail outbox                       x      x
+  users & system settings           x
+  The live matrix is at Administration > Access model.
+
+5.4  PROVISIONING A USER (Administration > Users & roles > Add user)
+  1. User ID: for AD users, their Windows logon name (sAMAccountName) EXACTLY
+     as in AD, e.g. kumud.kesar.
+  2. Name, email, designation.
+  3. Role and home business unit (the preview shows what they will see).
+     The home unit also decides WHICH DIRECTORY they sign in against:
+       ESL                              -> ESL directory
+       IOB, IOK, IOG, VAB, HO, FACOR    -> IOB directory
+       VISL (group-level)               -> ESL tried first, then IOB
+  4. Sign-in method:
+       Active Directory  - no password stored; they use their AD password.
+       Local password    - for break-glass / service accounts; 10+ chars.
+  5. Save. The user can sign in immediately.
+  A valid AD password alone grants nothing: the account must exist here,
+  be active, and be marked Active Directory. Nobody is auto-created.
+  Leavers: untick "Account is active" (their AD account being disabled also
+  blocks sign-in).
+
+5.5  BREAK-GLASS ADMINISTRATOR
+  sql/02 creates "pmo.admin" (local, no password). Set its password with
+     npm run seed -- --admin pmo.admin --password <<10+ chars>>
+  Run with AUTH_MODE=hybrid so this local admin still works if both
+  directories are down. Keep its password in the company vault.
+
+
+===============================================================================
+6.  ARCHITECTURE
+===============================================================================
+
+   Users' browsers (company network)
+        |  HTTPS 443
+        v
+   Reverse proxy (IIS with URL Rewrite/ARR, or nginx) - TLS certificate
+        |  HTTP 4010 (localhost only)
+        v
+   Node.js application  (server.js, Express)                 APPLICATION SERVER
+     - serves the built React client (public/)
+     - JSON API under /api, session in an httpOnly cookie (JWT, 10 h)
+     - scope resolved once per request (src/middleware/auth.js)
+     - formulas in one module (src/domain/metrics.js)
+        |                      |                          |
+        | TCP 1433 (TDS, TLS)  | TCP 636 (LDAPS)          | TCP 25/587 (SMTP)
+        v                      v                          v
+   SQL Server  VISL_PMO    ESL DC  +  IOB DC          SMTP relay
+   (SSMS)                  (two AD forests)           (optional)
+
+STACK
+  Server   Node.js 20 or 22 LTS, Express 4, mssql (tedious), ldapts, nodemailer,
+           exceljs, bcryptjs, jsonwebtoken, helmet. All pure JavaScript - no
+           native modules, no build tools needed on the server.
+  Client   React 18 + TypeScript, Vite build, Chart.js, React Query.
+           Fonts (IBM Plex) and charts are bundled - no CDN, no internet.
+  Data     DATA_MODE=synthetic (built-in demo data, no DB) or mssql.
+
+REPOSITORY LAYOUT
+  server.js                 Express app, security headers, static client, cron
+  src/config/env.js         Every environment variable, validated at start
+  src/middleware/auth.js    Session + business-unit scope
+  src/domain/               hierarchy.js, rbac.js, metrics.js (pure logic)
+  src/data/                 synthetic/ and mssql/ repositories (same interface)
+  src/routes/               auth, initiatives, approvals, analytics, admin, misc
+  src/services/             ldap.js (AD), mailer.js, notifications.js
+  src/db/                   migrate.js, seed.js (admin password, CSV plans)
+  src/scripts/              e2e.js, reconcile.js, adTest.js, mailTest.js, package.js
+  sql/                      00 server setup, 01 schema, 02 reference, 03 views,
+                            04 verify, 05 departments, 99 remove synthetic
+  web/                      React source (built into public/)
+  ecosystem.config.js       PM2 definition (Linux)
+
+SECURITY HEADERS  Content-Security-Policy script-src 'self' (no inline script,
+  no CDN), frame-ancestors 'none', X-Powered-By removed. Sign-in rate limited
+  to 20 attempts / 10 minutes per IP. Audit log of every sign-in and change.
+
+
+===============================================================================
+7.  DATA MODEL  (database VISL_PMO, schema dbo)
+===============================================================================
+
+TABLES
+  business_units     The hierarchy (self-referencing; is_consolidated = roll-up)
+  departments        Unit-qualified names, UNIQUE across the estate
+  categories         10 EBITDA levers (RAW, ENE, LOG, YLD, CON, SPR, WCP, SLS, OVH, DIG)
+  users              employee_id (AD logon name), role, home_business_unit_id,
+                     ad_user (1 = signs in via AD), password_hash (local only)
+  owner_aliases      Maps free-text owner names from CSVs to users
+  initiatives        The portfolio; target_savings_cr; leaf units only (CHECK)
+  initiative_months  ONE ROW PER INITIATIVE PER MONTH: plan_cr, actual_cr,
+                     actual_status (draft/submitted/approved/rejected),
+                     submitted_by/at, approved_by/at, rejection_note
+  tasks, milestones, risks, comments
+  notifications      In-app bell
+  audit_log          Every approval, edit, sign-in and admin change
+  settings           Reporting calendar, approval policy (key/value)
+
+IMPORTANT CONSTRAINTS
+  uq_initiative_period       one row per initiative per month
+  ck_approved_has_approver   an approved month must name approver + time
+  ck_initiatives_leaf_only   no initiative on VISL or IOB
+
+VIEWS (sql/03_views.sql)
+  vw_bu_descendants    every unit -> itself + all descendants
+  vw_bu_month_leaf     leaf-level plan/booked/submitted per month
+  vw_bu_month          rolled up to every unit, with cumulatives
+  vw_visl_position     ONE ROW PER UNIT - what the executive board reports
+  vw_initiative_rollup initiative register with derived figures
+  vw_approval_queue    submitted months awaiting decision
+  (For Power BI or other reporting tools, read these views with a read-only login.)
+
+KEY SETTINGS (table dbo.settings, edited in the app under System)
+  reporting.fy_start             2026-04-01
+  reporting.fy_label             FY 2026-27
+  reporting.closed_through       last settled month (drives *_ptd figures)
+  reporting.submission_period    month owners are entering now
+  approval.mode                  local | central | visl
+  approval.self_approval_allowed false
+
+
+===============================================================================
+8.  SQL SERVER (SSMS) - ARCHITECTURE AND STEP-BY-STEP SETUP
+===============================================================================
+
+8.1  TARGET ARCHITECTURE
+  - SQL Server 2019 or 2022 (2016 SP1 minimum - STRING_SPLIT is required),
+    any edition incl. Standard. Azure SQL Database also supported (8.12).
+  - A dedicated database VISL_PMO. Preferably NOT on a server that hosts
+    unrelated production systems (the ESL database sat on a shared IOB BI
+    server - flagged as a risk). A dedicated instance or at least its own
+    backup/lifecycle policy.
+  - Two SQL logins, least privilege (created by sql/00_server_setup.sql):
+        visl_owner  db_owner on VISL_PMO only  - schema changes, run by DBA
+        visl_app    db_datareader + db_datawriter - what the app uses at runtime
+    Optional third: visl_report (db_datareader) for Power BI.
+  - Recovery model FULL with log backups; READ_COMMITTED_SNAPSHOT ON.
+  - Network: TCP 1433 (or the instance's fixed port) open ONLY from the
+    application server. Encryption on (Force Encryption or client-requested).
+  - Size: small. < 1 GB for years of data. 2 vCPU / 4-8 GB RAM instance is
+    plenty; the application holds at most 10 connections (DB_POOL_MAX).
+
+8.2  PREREQUISITES ON THE SQL SERVER (DBA)
+  a. Server authentication = "SQL Server and Windows Authentication mode"
+     (SSMS > server > Properties > Security). Restart the service if changed.
+     If policy forbids SQL logins, use a domain service account instead:
+     see 8.11.
+  b. TCP/IP enabled (SQL Server Configuration Manager > Network
+     Configuration > Protocols > TCP/IP = Enabled; restart).
+  c. Named instance: give it a FIXED port (TCP/IP > IP Addresses > IPAll >
+     TCP Port, clear "TCP Dynamic Ports") - simplest to firewall. Otherwise
+     SQL Browser (UDP 1434) must also be reachable.
+  d. Windows Firewall inbound rule: TCP <<port>> from <<app server IP>> only.
+  e. A certificate for encryption: either one issued by the company CA to the
+     server's FQDN (preferred - set DB_TRUST_SERVER_CERT=false), or the
+     default self-signed certificate (set DB_TRUST_SERVER_CERT=true; an
+     accepted internal-network risk, record it).
+
+8.3  STEP 1 - CREATE THE DATABASE AND LOGINS  (DBA, SSMS, as sysadmin, on master)
+  Open sql/00_server_setup.sql. Replace <<OWNER_PASSWORD>> and
+  <<APP_PASSWORD>> (16+ chars; letters, digits, - and _ only). Adjust
+  COMPATIBILITY_LEVEL (160 for 2022, 150 for 2019, 130 for 2016) and any
+  file/backup paths. Execute PART A. The last result grid must show:
+        visl_app    db_datareader
+        visl_app    db_datawriter
+        visl_owner  db_owner
+
+8.4  STEP 2 - CREATE THE SCHEMA  (DBA, SSMS, connected AS visl_owner)
+  In SSMS: Connect > Options > Connection Properties > "Connect to database"
+  = VISL_PMO (this avoids error 916 and the "empty sys.tables on master" trap).
+  Then open and execute IN ORDER, confirming SELECT DB_NAME() = VISL_PMO first:
+        sql/01_schema.sql           tables, constraints, indexes
+        sql/02_reference_data.sql   business units, levers, settings, pmo.admin
+        sql/03_views.sql            the six consolidation views
+        sql/04_verify.sql           checks - every section must show OK
+  Each script is idempotent: safe to re-run. Files contain GO separators -
+  run each file as a whole in SSMS (F5).
+  Alternative from the app server: set DB_USER=visl_owner temporarily in
+  .env, run  npm run migrate  (runs 01-04, stops at the first error and
+  prints the failing batch), then set DB_USER back to visl_app.
+
+8.5  STEP 3 - DEPARTMENTS  (PMO provides the list; DBA runs it)
+  Edit sql/05_departments.sql: replace the sample rows with the real
+  departments per reporting unit, names qualified with the unit, e.g.
+  N'Commercial (IOK)'. Execute against VISL_PMO. The guard query must
+  return no rows. Re-run any time the list changes (never deletes).
+
+8.6  STEP 4 - CONNECT THE APPLICATION (IT, on the app server - see 11)
+  In .env:
+        DATA_MODE=mssql
+        DB_HOST=<<server FQDN, without \instance>>
+        DB_INSTANCE=<<instance name, or blank for default instance>>
+        DB_PORT=<<1433 or fixed port; ignored when DB_INSTANCE is set>>
+        DB_NAME=VISL_PMO
+        DB_AUTH=sql
+        DB_USER=visl_app
+        DB_PASSWORD=<<APP_PASSWORD>>
+        DB_ENCRYPT=true
+        DB_TRUST_SERVER_CERT=<<false with CA cert | true with self-signed>>
+  What you type in SSMS "Server name" maps like this:
+        SQLPRD01                   DB_HOST=SQLPRD01           DB_INSTANCE=
+        SQLPRD01\VISL              DB_HOST=SQLPRD01           DB_INSTANCE=VISL
+        SQLPRD01,14330             DB_HOST=SQLPRD01           DB_PORT=14330
+        sqlprd01.vedanta.local     DB_HOST=sqlprd01.vedanta.local
+
+8.7  STEP 5 - ADMINISTRATOR PASSWORD
+        npm run seed -- --admin pmo.admin --password <<10+ chars>>
+  Sign in as pmo.admin, then create the real users (5.4).
+
+8.8  STEP 6 - LOAD SAVINGS PLANS (one CSV per reporting unit)
+        npm run seed -- --plan ./plans/savings-plan-IOK.csv --bu IOK
+  CSV header row (case-insensitive):
+        code, title, department, owner, category, target_cr,
+        Apr-26, May-26, Jun-26, Jul-26, Aug-26, Sep-26, Oct-26, Nov-26,
+        Dec-26, Jan-27, Feb-27, Mar-27
+  ("Apr 26" or "Apr-2026" also accepted.) department must match
+  departments.name exactly; owner is matched to users.name; category is a
+  lever code (RAW, ENE, ...). NOTHING is written unless every row's twelve
+  months add up to its target_cr. --bu must be ESL, IOK, IOG, VAB, HO or
+  FACOR (never VISL/IOB). Re-running updates titles/targets/plans of
+  existing codes and never touches approved months.
+  Initiatives and plans can also be created and edited directly in the app.
+
+8.9  STEP 7 - VERIFY
+  SSMS: run sql/04_verify.sql (all OK).  App server:  npm run check:metrics
+  (synthetic reconciliation gate) and  npm run test:e2e  (see 12.3).
+
+8.10 BACKUP, MAINTENANCE, MONITORING
+  Backups (SQL Agent jobs or Maintenance Plans):
+        Full nightly, differential every 6 h, log every 15 min,
+        35-day retention, month-end full kept 13 months,
+        quarterly test restore to a scratch database.
+  Maintenance: weekly index reorganise/rebuild + statistics update
+        (Ola Hallengren or the company's standard). DBCC CHECKDB weekly.
+  Monitoring: the app identifies itself as application name
+        "VISL EBITDA Drive PMO" - visible in Activity Monitor and:
+        SELECT session_id, login_name, host_name, status, last_request_end_time
+        FROM sys.dm_exec_sessions WHERE program_name = 'VISL EBITDA Drive PMO';
+  Health: GET http://<<app>>/api/health  returns {"ok":true,"dataMode":"mssql",...}
+
+8.11 WINDOWS (DOMAIN) AUTHENTICATION TO SQL SERVER - if SQL logins are not allowed
+  Create a domain service account, e.g. <<DOMAIN>>\svc_visl_pmo, then in
+  sql/00 use  CREATE LOGIN [<<DOMAIN>>\svc_visl_pmo] FROM WINDOWS  instead of
+  visl_app, and in .env:
+        DB_AUTH=ntlm   DB_DOMAIN=<<DOMAIN>>   DB_USER=svc_visl_pmo   DB_PASSWORD=<<...>>
+  (The Node driver authenticates with the account's name and password over
+  NTLM; "Integrated Security" as the service's own identity is not available.)
+
+8.12 AZURE SQL (only if the database is in Azure instead of on-premise)
+  Run PART B of sql/00 (B1 on master, B2 on VISL_PMO). DB_ENCRYPT=true,
+  DB_TRUST_SERVER_CERT=false. Allow the app server's IP in the Azure SQL
+  firewall. Use a provisioned tier: serverless tiers pause and the first
+  request after idle takes 30-60 s.
+
+8.13 SQL TROUBLESHOOTING
+  Login failed for user 'visl_app' (18456)
+      State 5: login does not exist. State 8: wrong password - check for #, $
+      or quotes in DB_PASSWORD (dotenv truncates at #). State 38 / 4060: the
+      login has no user in VISL_PMO - re-run sql/00 A3. State 58: server is in
+      Windows-only mode - see 8.2a.
+  Error 916 "cannot access database master"   the connection did not name the
+      database - DB_NAME must be set; in SSMS set Connect to database.
+  "Failed to connect ... in 15000ms" / ETIMEOUT   firewall, wrong port, TCP/IP
+      disabled, or named instance without SQL Browser - see 8.2 b-d.
+  "self signed certificate" / "certificate verify failed"   set
+      DB_TRUST_SERVER_CERT=true, or install a CA-issued cert on SQL Server.
+  "Invalid object name 'dbo.vw_...'"   views missing - run sql/03, then 04.
+  "The SELECT permission was denied"   visl_app lacks db_datareader - sql/00 A3.
+  "CREATE TABLE permission denied" during npm run migrate   you are running as
+      visl_app; migrations need visl_owner (8.4).
+  STRING_SPLIT is not a recognized built-in function   compatibility level
+      below 130 - ALTER DATABASE VISL_PMO SET COMPATIBILITY_LEVEL = 150.
+  Dashboards all zero   check System > Reporting calendar: if Closed through
+      is before the first approved month, zero is correct.
+  A parent total does not equal its children   run sql/04_verify.sql
+      sections 3-4; an initiative on a roll-up node is the usual cause.
+
+
+===============================================================================
+9.  ACTIVE DIRECTORY OVER LDAP - TWO DIRECTORIES
+===============================================================================
+
+9.1  LDAP IN PLAIN WORDS
+  Active Directory (AD) is the company's list of people and their passwords.
+  LDAP is the language applications use to talk to it. For sign-in, the
+  application needs only two LDAP operations:
+    - SEARCH  "find the person whose logon name is kumud.kesar" -> returns
+              their Distinguished Name (DN), the full address of their entry,
+              e.g. CN=Kumud Kesar,OU=Users,OU=IOB,DC=iob,DC=local
+    - BIND    "log in to the directory as <DN> with <password>". If AD accepts
+              the bind, the password is correct. That is the whole check.
+  Key terms
+    Domain controller (DC)  the server that answers LDAP (e.g. iob-dc01)
+    Base DN                 where to search, e.g. DC=iob,DC=local
+    sAMAccountName          the Windows logon name (kumud.kesar)
+    Service account         a read-only AD account the app uses to SEARCH
+    LDAPS                   LDAP over TLS on TCP 636 - encrypted from the start
+    StartTLS                LDAP on TCP 389 upgraded to TLS before anything is sent
+    Root CA certificate     lets the app trust the DC's LDAPS certificate
+
+9.2  VISL TOPOLOGY - TWO DIRECTORIES
+        ESL directory   serves home unit ESL
+        IOB directory   serves IOB, IOK, IOG, VAB, HO **and FACOR**
+  Each user signs in against the directory of their home business unit.
+  Only that directory is tried, so the same logon name existing in both
+  forests can never be confused. Group-level users (home unit VISL) are
+  tried against ESL, then IOB (order of AD_DIRS); the first that accepts wins.
+  If group-level staff all sit in one forest, list it first in AD_DIRS.
+
+9.3  WHAT HAPPENS AT SIGN-IN
+   Browser --(user ID + password, over HTTPS)--> Application
+   1. Application finds the user in dbo.users: must exist, be active and be
+      an AD account (ad_user = 1). Otherwise: "Incorrect user ID or password".
+   2. Picks the directory from their home unit (9.2).
+   3. Opens LDAPS to that DC (verifies its certificate against the CA file).
+   4. BINDs as the service account; SEARCHes the base DN for
+      (&(objectCategory=person)(objectClass=user)(sAMAccountName=<id>)).
+      Not found, or disabled in AD -> refused.
+   5. BINDs as the user's own DN with the typed password.
+      Accepted -> signed in (session cookie, 10 h). Rejected -> refused.
+   6. DC unreachable / misconfigured -> "The company directory could not be
+      reached" (HTTP 503) - never reported as a wrong password.
+  Passwords are never stored, logged or sent unencrypted. Plain ldap:// without
+  StartTLS is refused by the application. The user ID is escaped before
+  searching (no LDAP injection).
+
+9.4  AUTH_MODE
+  local   everyone signs in with a local password (demo / before AD is ready)
+  ad      only AD accounts can sign in
+  hybrid  AD accounts via AD, local accounts via their password  <- USE THIS
+          keeps the break-glass admin (5.5) working if a directory is down.
+
+9.5  CONFIGURATION (.env) - one block per directory
+        AUTH_MODE=hybrid
+        AD_DIRS=ESL,IOB
+
+        AD_ESL_URL=ldaps://<<esl DC FQDN>>:636
+        AD_ESL_BASE_DN=<<e.g. DC=esl,DC=local>>
+        AD_ESL_BIND_DN=<<CN=svc_visl_pmo,OU=Service Accounts,DC=esl,DC=local>>
+        AD_ESL_BIND_PASSWORD=<<set me>>
+        AD_ESL_CA_FILE=certs/esl-root-ca.pem
+        AD_ESL_UNITS=ESL
+
+        AD_IOB_URL=ldaps://<<iob DC FQDN>>:636
+        AD_IOB_BASE_DN=<<e.g. DC=iob,DC=local>>
+        AD_IOB_BIND_DN=<<CN=svc_visl_pmo,OU=Service Accounts,DC=iob,DC=local>>
+        AD_IOB_BIND_PASSWORD=<<set me>>
+        AD_IOB_CA_FILE=certs/iob-root-ca.pem
+        AD_IOB_UNITS=IOB,FACOR
+  Optional per directory: AD_<KEY>_STARTTLS=true (with ldap://dc:389),
+  AD_<KEY>_USER_FILTER (default above), AD_<KEY>_UPN_SUFFIX (direct-bind mode
+  when no service account is issued - user binds as id@suffix).
+  AD_TIMEOUT_MS=10000. Create a folder "certs" in the application folder for
+  the CA files. Tip: use a DNS name that resolves to several DCs (the domain
+  name itself, e.g. esl.local, often does) rather than one DC's name, so the
+  loss of one DC does not stop sign-in - but the name must be on the DC
+  certificates (ask the AD team).
+
+9.6  WHAT TO REQUEST FROM EACH AD TEAM (one ticket for ESL, one for IOB)
+  ----------------------------------------------------------------------
+  Subject: LDAPS service account for VISL EBITDA Drive PMO (read-only)
+  1. A service account, e.g. svc_visl_pmo, in the <<ESL | IOB>> domain:
+       - member of Domain Users only; NO admin rights, NO interactive logon
+       - "Password never expires" (rotated manually on schedule) or per policy
+       - read access to user objects under the base DN (default for Domain Users)
+     Please send: its full Distinguished Name, and the password via the vault.
+  2. The LDAPS endpoint: DC host name(s) or domain DNS name, port 636
+     (confirm LDAPS is enabled and the DC certificate is valid for that name).
+  3. The base DN that contains all staff who will use the application
+     (e.g. DC=iob,DC=local or OU=Staff,DC=iob,DC=local).
+     IOB team: confirm FACOR staff are within this base DN.
+  4. The Root CA (and intermediate) certificate that issued the DC
+     certificates, exported as Base-64 X.509 (.cer / PEM).
+  5. Firewall: allow TCP 636 from application server <<IP/host>> to the DCs.
+  6. Confirm users log on with sAMAccountName (e.g. firstname.lastname).
+  ----------------------------------------------------------------------
+
+9.7  EXPORTING THE ROOT CA CERTIFICATE (if the AD team asks how)
+  On any domain-joined Windows PC: certlm.msc (or certmgr.msc) > Trusted Root
+  Certification Authorities > Certificates > the company root CA > All Tasks >
+  Export > "Base-64 encoded X.509 (.CER)". Save as certs/esl-root-ca.pem or
+  certs/iob-root-ca.pem (renaming .cer to .pem is fine - it is the same text
+  format beginning "-----BEGIN CERTIFICATE-----"). If there is an
+  intermediate CA, paste it below the root in the same file.
+
+9.8  TESTING - BEFORE ANY USER TRIES TO SIGN IN
+  On the application server, in the application folder:
+        npm run ad:test
+            -> for each directory: config, TLS connection, service-account bind
+        npm run ad:test -- --dir ESL --user <<an ESL person>>
+            -> finds the person, shows DN / email / disabled flag
+        npm run ad:test -- --dir IOB --user <<a FACOR person>> --password
+            -> prompts for that person's password (hidden) and tests it
+  Each step prints OK or FAIL with the likely cause. Then in the app:
+  create that person as an AD user (5.4) and sign in.
+
+9.9  AD TROUBLESHOOTING (ad:test translates these)
+  Host name does not resolve        DNS from the app server; use the FQDN
+  Connection refused / timed out    firewall TCP 636, or LDAPS not enabled on DC
+  TLS certificate not trusted       wrong/missing CA file (9.7)
+  Certificate name mismatch         use the exact name on the DC certificate
+  Invalid credentials (49) at the service bind    wrong AD_<KEY>_BIND_DN or password
+  No such object (32)               base DN or bind DN misspelt
+  User not found                    wrong base DN (user outside it) or filter
+  AD data 52e   wrong password        data 532  password expired
+  data 533      account disabled      data 701  account expired
+  data 773      must change password  data 775  account locked
+  "Incorrect user ID or password" but ad:test passes   the user is not in the
+      app, is inactive, is not marked Active Directory, or AUTH_MODE=local.
+  "Company directory could not be reached" (503)   the directory for that
+      user's home unit is down or misconfigured - run ad:test --dir <KEY>.
+
+
+===============================================================================
+10. MAIL AND NOTIFICATIONS (SMTP)
+===============================================================================
+  Default SMTP_ENABLED=false = OUTBOX MODE: every message is rendered and kept
+  under var/outbox and shown in Administration > Mail outbox; nothing is sent.
+  Messages: actual submitted (to approvers), approved / returned (to owner,
+  with reason), submission reminder (one per owner), weekly leadership digest
+  (scoped to each recipient's units), milestone due.
+  To go live: review every template in the outbox; then set
+        SMTP_ENABLED=true  SMTP_HOST=<<relay>>  SMTP_PORT=<<25|587>>
+        SMTP_SECURE=<<false|true>>  SMTP_USER/SMTP_PASSWORD (if the relay needs it)
+        MAIL_FROM=VISL PMO <<<no-reply address>>>
+  Test:  npm run mail:test -- <<your email>>
+  Scheduled jobs stay off until MAIL_CRON_ENABLED=true
+  (reminders daily 09:00, digest Monday 07:00; cron syntax in .env).
+
+
+===============================================================================
+11. APPLICATION SERVER DEPLOYMENT
+===============================================================================
+
+11.1 SERVER
+  Windows Server 2019/2022 or Linux (RHEL/Ubuntu). 2 vCPU, 4 GB RAM, 5 GB disk.
+  Node.js 20 LTS or 22 LTS (install from the company software catalogue or
+  nodejs.org MSI). No internet access is needed on the server if you use the
+  release package (11.2).
+
+11.2 GET THE APPLICATION ONTO THE SERVER - the release package
+  On a machine WITH internet (e.g. the developer laptop), same major Node:
+        npm ci
+        npm run package
+  This builds the client and creates release/visl-ebitda-pmo/ containing the
+  app, the built client (public/) and production-only node_modules. Zip it,
+  copy to the server (e.g. D:\Apps\visl-ebitda-pmo or /opt/visl-ebitda-pmo),
+  unzip. Do NOT copy a .env from another machine.
+  (Alternative with internet on the server: git clone, npm ci, npm run build.
+  The build needs the dev dependencies - do not use --omit=dev before building.)
+
+11.3 NETWORK / FIREWALL REQUEST
+  From application server to:
+        SQL Server            TCP 1433 (or fixed instance port) [+UDP 1434 if dynamic]
+        ESL domain controllers  TCP 636
+        IOB domain controllers  TCP 636
+        SMTP relay            TCP 25 or 587 (only when mail is enabled)
+  To application server from user networks:
+        TCP 443 (HTTPS via IIS/nginx). Port 4010 stays local to the server.
+
+11.4 CONFIGURE
+  In the application folder:  copy .env.example .env   then edit .env:
+        NODE_ENV=production
+        APP_URL=https://<<pmo.vedanta.co.in or server name>>
+        JWT_SECRET=<<64 random characters - letters and digits>>
+        COOKIE_SECURE=true               (once served over HTTPS)
+        DATA_MODE=mssql + DB_* (8.6)
+        AUTH_MODE=hybrid + AD_* (9.5)
+        SMTP_* (10) - leave SMTP_ENABLED=false until the outbox is reviewed
+  Generate a JWT secret:  node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+  Restrict .env so only administrators and the service account can read it.
+  The app refuses to start with NODE_ENV=production and the default JWT secret,
+  and validates AUTH_MODE / AD / DB settings at start-up with a clear message.
+
+11.5 FIRST START (foreground, to see errors)
+        node server.js
+  Expect:  URL http://localhost:4010/app   Data mssql   Mail outbox   Auth hybrid
+  Open http://localhost:4010/api/health on the server. Stop with Ctrl+C.
+
+11.6 RUN AS A SERVICE
+  Windows (recommended: NSSM, or WinSW if that is the company standard):
+        nssm install VISL-PMO "C:\Program Files\nodejs\node.exe" "D:\Apps\visl-ebitda-pmo\server.js"
+        nssm set VISL-PMO AppDirectory D:\Apps\visl-ebitda-pmo
+        nssm set VISL-PMO AppStdout D:\Apps\visl-ebitda-pmo\var\logs\out.log
+        nssm set VISL-PMO AppStderr D:\Apps\visl-ebitda-pmo\var\logs\error.log
+        nssm set VISL-PMO Start SERVICE_AUTO_START
+        nssm set VISL-PMO ObjectName <<DOMAIN\svc account, optional>>
+        nssm start VISL-PMO
+     (Create var\logs first. AppDirectory matters: .env is read from it.)
+  Linux (PM2):
+        npm install -g pm2
+        pm2 start ecosystem.config.js --env production
+        pm2 save && pm2 startup
+
+11.7 HTTPS REVERSE PROXY
+  Windows / IIS: install URL Rewrite and Application Request Routing (ARR);
+  enable ARR proxy (IIS > server > ARR Cache > Server Proxy Settings > Enable
+  proxy). Create a site bound to 443 with the company certificate; add a
+  rewrite rule: match (.*) -> http://localhost:4010/{R:1}; preserve host
+  header; add server variable X-Forwarded-Proto = https. Set the proxy
+  timeout to 120 s.
+  Linux / nginx:
+        location / {
+            proxy_pass http://127.0.0.1:4010;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 120s;
+        }
+  Then COOKIE_SECURE=true and restart the service.
+
+11.8 UPDATING TO A NEW VERSION
+  Build a new release package (11.2); stop the service; back up the
+  application folder; replace everything EXCEPT .env, certs\ and var\;
+  apply any new sql/ scripts (release notes will say); start the service;
+  check /api/health and sign in.
+
+
+===============================================================================
+12. GO-LIVE CHECKLIST AND ACCEPTANCE TESTS
+===============================================================================
+
+12.1 INFRASTRUCTURE
+  [ ] SQL: sql/00 run; 01-04 run; 04_verify all OK; 05 departments loaded
+  [ ] SQL: backups scheduled and one test restore done
+  [ ] App server: Node LTS installed; release unzipped; .env complete
+  [ ] Service running and restarts on reboot; HTTPS works; COOKIE_SECURE=true
+  [ ] Firewall rules in place (11.3)
+  [ ] npm run ad:test passes for ESL and IOB, incl. one --password test each
+      (use a FACOR person for the IOB test)
+
+12.2 APPLICATION
+  [ ] pmo.admin password set (npm run seed -- --admin ...); stored in vault
+  [ ] AUTH_MODE=hybrid; real users created as Active Directory accounts
+  [ ] Reporting calendar set (System): closed through + collection month
+  [ ] Approval policy decided and set (System) - see 17
+  [ ] Savings plans loaded per unit; npm run check:metrics; 04_verify OK
+  [ ] Synthetic data never loaded into production (if it was: sql/99)
+  [ ] Mail templates reviewed in the outbox; SMTP tested; then enabled
+  [ ] Sign in once per role and check what each can see (Users & roles
+      shows each account's units)
+
+12.3 AUTOMATED END-TO-END TEST
+        npm run test:e2e          (with the app running; E2E_URL to point elsewhere)
+  158 checks across every role and endpoint: scope boundaries, the full
+  plan -> submit -> approve / return -> reopen cycle, bulk actions, tasks,
+  milestones, risks, comments, notifications, exports, administration.
+  In SQL mode it signs in as E2E_ADMIN (default pmo.admin, password from
+  E2E_PASSWORD) and CREATES test users named e2e.* (password
+  E2E_USER_PASSWORD, default E2e-Test-Pass-2026) and one test initiative
+  (deactivated at the end). Therefore run it on a UAT copy of the database,
+  or run it before loading real data and then deactivate the e2e.* users.
+  It needs local accounts, so AUTH_MODE must be local or hybrid.
+
+12.4 RECONCILIATION GATE
+        npm run check:metrics      (72 assertions; every parent = sum of children)
+
+
+===============================================================================
+13. OPERATIONS RUNBOOK
+===============================================================================
+  Monthly cycle            see 3.3. Move "Closed through" only when the month
+                           is genuinely settled - it publishes the month.
+  Year end                 close the last month; export per unit (Dashboard >
+                           Export); set reporting.fy_start / fy_label for the
+                           new year; set closed_through; load new plans;
+                           check:metrics + 04_verify. Old data is kept.
+  Before leadership reviews   approvals queue worked; closed_through correct;
+                           check:metrics = 0 failures.
+  Health                   /api/health ; service status ; var/logs
+  Users                    joiners: 5.4; movers: change role/home unit;
+                           leavers: untick Active.
+  Someone cannot see a unit   Users & roles > Sees column; change home unit/role.
+  Approver queue looks short   check approval.mode (under "central", IOK is
+                           approved by IOB PMO; rows outside authority show greyed).
+  Restore                  restore VISL_PMO from backup; restart the service.
+
+
+===============================================================================
+14. SECURITY AND CREDENTIALS
+===============================================================================
+  Secrets live ONLY in .env on the server (and the company vault):
+      DB_PASSWORD, AD_ESL_BIND_PASSWORD, AD_IOB_BIND_PASSWORD, JWT_SECRET,
+      SMTP_PASSWORD, pmo.admin password.
+  Never commit .env; the repository is public. .gitignore excludes it.
+  Character rule for every secret: letters, digits, hyphen, underscore only.
+  Rotation (at least yearly, and when anyone with access leaves):
+      visl_app       ALTER LOGIN visl_app WITH PASSWORD = '...'; update .env; restart
+      AD service     reset in AD; update AD_<KEY>_BIND_PASSWORD; restart
+      JWT_SECRET     change and restart (signs everyone out)
+  Least privilege: runtime login cannot change the schema; AD service accounts
+  are read-only; the app never writes to AD.
+  All sign-ins and changes are in the audit trail with user, time and IP.
+  Credentials used during development/testing must be rotated before go-live.
+
+
+===============================================================================
+15. CONFIGURATION REFERENCE (.env)
+===============================================================================
+  General
+    NODE_ENV                 development | production
+    PORT                     4010
+    APP_URL                  public URL, used in mail links
+    APP_NAME                 VISL EBITDA Drive PMO
+    DATA_MODE                synthetic | mssql
+  Database
+    DB_HOST                  server name (no \instance)
+    DB_INSTANCE              named instance, blank for default
+    DB_PORT                  1433 (ignored when DB_INSTANCE set)
+    DB_NAME                  VISL_PMO
+    DB_AUTH                  sql | ntlm
+    DB_DOMAIN                for ntlm
+    DB_USER / DB_PASSWORD    visl_app (runtime)
+    DB_ENCRYPT               true
+    DB_TRUST_SERVER_CERT     false (CA cert) | true (self-signed)
+    DB_REQUEST_TIMEOUT_MS    90000
+    DB_CONNECT_TIMEOUT_MS    60000
+    DB_POOL_MAX              10
+  Authentication
+    AUTH_MODE                local | ad | hybrid
+    JWT_SECRET               long random string (required in production)
+    SESSION_HOURS            10
+    COOKIE_NAME              visl_pmo_sid
+    COOKIE_SECURE            true behind HTTPS
+  Active Directory (per directory KEY in AD_DIRS, e.g. ESL, IOB)
+    AD_DIRS                  ESL,IOB
+    AD_<KEY>_URL             ldaps://dc:636
+    AD_<KEY>_BASE_DN         DC=...,DC=...
+    AD_<KEY>_BIND_DN         service account DN
+    AD_<KEY>_BIND_PASSWORD   service account password
+    AD_<KEY>_CA_FILE         path to root CA PEM
+    AD_<KEY>_UNITS           units served (ESL | IOB,FACOR)
+    AD_<KEY>_STARTTLS        true only with ldap://...:389
+    AD_<KEY>_USER_FILTER     default (&(objectCategory=person)(objectClass=user)(sAMAccountName={{username}}))
+    AD_<KEY>_UPN_SUFFIX      direct-bind mode without service account
+    AD_<KEY>_TLS_REJECT_UNAUTHORIZED   true (never false in production)
+    AD_TIMEOUT_MS            10000
+    (Also accepted: one directory as AD_URL, AD_BASE_DN, ...; or
+     AD_DIRECTORIES as one line of JSON.)
+  Mail
+    SMTP_ENABLED             false = outbox mode
+    SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASSWORD
+    MAIL_FROM                VISL PMO <no-reply@...>
+    MAIL_OUTBOX_DIR          var/outbox
+    MAIL_CRON_ENABLED        false
+    MAIL_REMINDER_CRON       0 9 * * *
+    MAIL_DIGEST_CRON         0 7 * * 1
+  Financial year
+    FY_START_MONTH=4  FY_START=2026-04-01  FY_LABEL=FY 2026-27
+    (the live reporting calendar is edited in the app under System)
+  Testing
+    E2E_URL, E2E_ADMIN, E2E_PASSWORD   for npm run test:e2e
+
+
+===============================================================================
+16. COMMAND REFERENCE (run in the application folder)
+===============================================================================
+  npm start                          run the application
+  npm run migrate                    apply sql/01-04 (needs visl_owner)
+  npm run seed -- --admin <id> --password <pw>     set a local password
+  npm run seed -- --plan <file.csv> --bu <UNIT>    load a savings plan
+  npm run ad:test [-- --dir KEY --user ID --password]   test AD / LDAP
+  npm run mail:test [-- email]       test SMTP
+  npm run test:e2e                   end-to-end test (app must be running)
+  npm run check:metrics              reconciliation gate
+  npm run build                      build the client (developer machine)
+  npm run package                    build the deployable release folder
+  npm run dev                        development mode with hot reload
+
+
+===============================================================================
+17. KNOWN GAPS AND OPEN DECISIONS
+===============================================================================
+  Decisions for leadership
+    a. Approval policy: do IOK/IOG/VAB/HO approve their own actuals (local),
+       does IOB PMO approve centrally (central - current default), or VISL PMO
+       for all (visl)? One click under System; no code change.
+    b. Cross-unit visibility: may, e.g., FACOR PMO see ESL initiative titles
+       for benchmarking? Today: no (only global roles see everything). A yes
+       would need a new read-only cross-unit role.
+  Inputs from business / IT
+    c. Real savings plans (CSV per unit) from the ESL, IOB and FACOR PMOs.
+    d. Department list per reporting unit (sql/05).
+    e. AD service accounts, LDAPS endpoints, base DNs and CA certificates for
+       the ESL and IOB domains (9.6).
+    f. A database server and an application server (8.1, 11.1).
+  Product gaps (small, not blocking go-live)
+    g. Departments are maintained by SQL script (sql/05); no admin screen yet.
+    h. No "delete initiative" action; deactivate via edit instead.
+    i. AD group-based role assignment is not implemented: roles are assigned
+       per user in the app. (Could be added later using AD groups.)
+    j. The SQL Server path has been reviewed and fixed line by line, and the
+       application logic is tested end to end in synthetic mode, but the first
+       full run against the company SQL Server is the true integration test -
+       run 12.3 on UAT first.
+
+
+===============================================================================
+18. CHANGE LOG
+===============================================================================
+  11 Sep 2026   Initial VISL build; VISL-only logo.
+  21 Sep 2026   End-to-end review and fixes (2.7); automated E2E test; mail
+                test script. New "Steel & Leaf" Vedanta Iron & Steel interface
+                (top navigation, business-unit tree, brand colours, IBM Plex).
+                Active Directory over LDAPS with two directories (ESL; IOB +
+                FACOR), hybrid mode, AD test tool. User admin: sign-in method
+                and passwords. SQL Server: named instance and Windows-account
+                support, least-privilege server setup script (sql/00),
+                departments script (sql/05). Release packaging for offline
+                servers. This handover.
+
+
+===============================================================================
+19. WORKSHEET - VALUES TO COLLECT BEFORE INSTALLATION
+===============================================================================
+  SQL SERVER
+    SQL Server name / instance (as typed in SSMS) ...... <<                 >>
+    SQL Server version (2016/2019/2022) ................ <<                 >>
+    Fixed TCP port ...................................... <<                 >>
+    Authentication allowed: SQL logins / Windows only .. <<                 >>
+    Certificate: CA-issued or self-signed ............... <<                 >>
+    Data / log / backup paths ........................... <<                 >>
+    DBA contact ......................................... <<                 >>
+
+  APPLICATION SERVER
+    Host name / IP, OS .................................. <<                 >>
+    Application folder .................................. <<                 >>
+    Public URL (DNS) and TLS certificate ................ <<                 >>
+    Service account (if any) ............................ <<                 >>
+
+  ESL DIRECTORY
+    LDAPS URL (host:636) ................................ <<                 >>
+    Base DN ............................................. <<                 >>
+    Service account DN .................................. <<                 >>
+    Root CA certificate file ............................ <<                 >>
+    Test user (for ad:test) ............................. <<                 >>
+    AD contact .......................................... <<                 >>
+
+  IOB DIRECTORY (includes FACOR)
+    LDAPS URL (host:636) ................................ <<                 >>
+    Base DN (covers IOB and FACOR staff) ................ <<                 >>
+    Service account DN .................................. <<                 >>
+    Root CA certificate file ............................ <<                 >>
+    Test users: one IOB, one FACOR ...................... <<                 >>
+    AD contact .......................................... <<                 >>
+
+  MAIL
+    SMTP relay host / port / TLS / auth ................. <<                 >>
+    From address ........................................ <<                 >>
+
+  PEOPLE AND POLICY
+    Initial administrators (user IDs) ................... <<                 >>
+    VISL PMO users ...................................... <<                 >>
+    BU PMO users per unit ............................... <<                 >>
+    Approval policy (local / central / visl) ............ <<                 >>
+    Reporting calendar: closed through / collection month <<                 >>
+
+===============================================================================
+  End of handover.
+===============================================================================

@@ -4,7 +4,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api, qs } from '../lib/api';
 import { useApp, useToast } from '../context/AppContext';
 import { PageHeader, SyntheticBanner } from '../components/Shell';
-import { BuPicker } from '../components/BuPicker';
 import { Card, Empty, Loading, HealthDot, BuTag, StatusBadge, DualBar, ProgressBar, Alert } from '../components/Primitives';
 import { Icon } from '../components/Icons';
 import { Modal } from '../components/Modal';
@@ -85,7 +84,6 @@ export function InitiativesList() {
   return (
     <>
       <PageHeader title="Initiatives" subtitle={`${rows.length} in scope · ${cr(totals.target)} Cr committed`}>
-        <BuPicker />
         {can('initiative:create') && (
           <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>
             <Icon name="plus" /> New initiative

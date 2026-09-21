@@ -88,6 +88,10 @@ wording and switched SMTP on.
 
 ## Documentation
 
+**Start with [`HANDOVER.txt`](HANDOVER.txt)** - the complete handover in one file: insights,
+functionality, access, SQL Server (SSMS) setup, Active Directory over LDAP (ESL and IOB+FACOR
+directories), deployment, go-live checklist and operations.
+
 | | |
 |---|---|
 | [01 Setup](docs/01-SETUP.md) | Local run, Azure SQL deployment, the environment gotchas that cost time last round |
@@ -129,6 +133,7 @@ web/                      React + TypeScript client (Vite), built into public/
 
 ```bash
 npm run check:metrics    # every parent equals the sum of its children
+npm run test:e2e         # 158 end-to-end API checks (server running)
 npx tsc -p web/tsconfig.json --noEmit
 npm run build
 ```

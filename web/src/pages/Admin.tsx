@@ -32,7 +32,7 @@ export function AdminUsers() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => api.get<{ users: User[]; roles: Record<string, any>; businessUnits: any[] }>('/admin/users'),
+    queryFn: () => api.get<{ users: User[]; roles: Record<string, any>; businessUnits: any[]; authMode: string; dataMode: string }>('/admin/users'),
   });
 
   const save = useMutation({
@@ -72,7 +72,7 @@ export function AdminUsers() {
               <table className="grid">
                 <thead>
                   <tr>
-                    <th>User</th><th>User ID</th><th>Role</th><th>Home unit</th>
+                    <th>User</th><th>User ID</th><th>Sign-in</th><th>Role</th><th>Home unit</th>
                     <th>Sees</th><th>Can edit</th><th>Last sign-in</th><th>Active</th><th style={{ width: 60 }} />
                   </tr>
                 </thead>
@@ -92,6 +92,7 @@ export function AdminUsers() {
                         </span>
                       </td>
                       <td className="code">{u.employee_id}</td>
+                      <td>{u.ad_user ? <span className="badge blue">Active Directory</span> : <span className="badge">Local</span>}</td>
                       <td><span className="badge blue">{ROLE_LABELS[u.role]}</span></td>
                       <td><BuTag code={u.home_bu} /></td>
                       <td>
@@ -119,6 +120,8 @@ export function AdminUsers() {
       {editing && data && (
         <UserForm
           user={editing}
+          authMode={data.authMode}
+          dataMode={data.dataMode}
           businessUnits={data.businessUnits}
           busy={save.isPending}
           onClose={() => setEditing(null)}
@@ -127,6 +130,8 @@ export function AdminUsers() {
       )}
       {creating && data && (
         <UserForm
+          authMode={data.authMode}
+          dataMode={data.dataMode}
           businessUnits={data.businessUnits}
           busy={false}
           onClose={() => setCreating(false)}
@@ -144,8 +149,9 @@ export function AdminUsers() {
   );
 }
 
-function UserForm({ user, businessUnits, onSave, onClose, busy }: {
+function UserForm({ user, businessUnits, onSave, onClose, busy, authMode, dataMode }: {
   user?: User; businessUnits: any[]; onSave: (patch: any) => void; onClose: () => void; busy: boolean;
+  authMode: string; dataMode: string;
 }) {
   const [form, setForm] = useState({
     employee_id: user?.employee_id ?? '',
@@ -155,7 +161,19 @@ function UserForm({ user, businessUnits, onSave, onClose, busy }: {
     role: (user?.role ?? 'viewer') as Role,
     home_bu: user?.home_bu ?? 'ESL',
     is_active: user?.is_active ?? true,
+    // New accounts default to AD once the directory is connected.
+    ad_user: user ? !!user.ad_user : authMode !== 'local',
+    password: '',
   });
+
+  // A local account created against the real database has no other way in.
+  const needsPassword = !user && !form.ad_user && dataMode === 'mssql';
+  const pwShort = !form.ad_user && form.password.length > 0 && form.password.length < 10;
+  const invalid = !form.name || !form.employee_id || pwShort || (needsPassword && !form.password);
+  const payload = () => {
+    const { password, ...rest } = form;
+    return form.ad_user || !password ? rest : { ...rest, password };
+  };
 
   // Recomputed live so the administrator sees the effect of the role and unit
   // they have just picked, before they commit to it.
@@ -168,7 +186,7 @@ function UserForm({ user, businessUnits, onSave, onClose, busy }: {
       footer={
         <>
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={busy || !form.name || !form.employee_id} onClick={() => onSave(form)}>
+          <button className="btn btn-primary" disabled={busy || invalid} onClick={() => onSave(payload())}>
             <Icon name="save" /> Save
           </button>
         </>
@@ -179,7 +197,7 @@ function UserForm({ user, businessUnits, onSave, onClose, busy }: {
           <label>User ID</label>
           <input className="input" value={form.employee_id} disabled={!!user}
             onChange={(e) => setForm((f) => ({ ...f, employee_id: e.target.value }))} />
-          <span className="help">The sAMAccountName once Active Directory is connected.</span>
+          <span className="help">{form.ad_user ? 'Their Windows / AD logon name (sAMAccountName), e.g. kumud.kesar.' : 'Any unique ID. Used only to sign in to this application.'}</span>
         </div>
         <div className="field">
           <label>Name</label>
@@ -212,6 +230,36 @@ function UserForm({ user, businessUnits, onSave, onClose, busy }: {
           </select>
         </div>
       </div>
+
+      <div className="field">
+        <label>Sign-in method</label>
+        <div className="btn-group">
+          <button type="button" className={`btn btn-outline btn-sm ${form.ad_user ? 'on' : ''}`}
+            onClick={() => setForm((f) => ({ ...f, ad_user: true, password: '' }))}>Active Directory</button>
+          <button type="button" className={`btn btn-outline btn-sm ${!form.ad_user ? 'on' : ''}`}
+            onClick={() => setForm((f) => ({ ...f, ad_user: false }))}>Local password</button>
+        </div>
+        <span className="help">
+          {form.ad_user
+            ? (authMode === 'local'
+              ? 'Signs in with their company (AD) password once AUTH_MODE is set to ad or hybrid. Until then this account cannot sign in.'
+              : 'Signs in with their company (AD) password. Nothing is stored here.')
+            : (authMode === 'ad'
+              ? 'AUTH_MODE is ad: local passwords are not accepted. Use hybrid to keep a break-glass local administrator.'
+              : 'For service and break-glass accounts. Stored as a bcrypt hash.')}
+        </span>
+      </div>
+
+      {!form.ad_user && (
+        <div className="field">
+          <label>{user ? 'Reset password (leave blank to keep)' : 'Initial password'}</label>
+          <input className="input" type="password" autoComplete="new-password" value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
+          <span className="help" style={pwShort ? { color: 'var(--red-600)' } : undefined}>
+            At least 10 characters. Share it with the user directly, never by mail.
+          </span>
+        </div>
+      )}
 
       <Alert tone={preview.global ? 'amber' : 'info'}>
         {preview.global

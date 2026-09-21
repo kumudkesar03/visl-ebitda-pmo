@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../lib/api';
 import { useApp } from '../context/AppContext';
 import { PageHeader, SyntheticBanner } from '../components/Shell';
-import { BuPicker, WindowNote } from '../components/BuPicker';
+import { WindowNote } from '../components/BuPicker';
 import { Card, Kpi, RatioKpi, KpiSkeleton, Loading, HealthDot, BuTag, Alert, Empty } from '../components/Primitives';
 import { CumulativeDelivery, MonthlyDelivery, ConcentrationCurve, Legend } from '../components/Charts';
 import { Icon } from '../components/Icons';
@@ -61,7 +61,6 @@ export function ExecBoard() {
         title="Executive board"
         subtitle={data ? <WindowNote label={`${session.settings.fy_label} · ${data.window.label}`} closedCount={data.window.closedCount} totalCount={data.window.totalCount} /> : 'Loading…'}
       >
-        <BuPicker />
         <button className="btn btn-outline btn-sm no-print" onClick={() => window.print()}>
           <Icon name="print" /> Board pack
         </button>
@@ -309,7 +308,7 @@ function Bridge({ steps, target }: { steps: BridgeStep[]; target: number }) {
     positive: CHART.approved,
     pipeline: CHART.pipeline,
     planned: CHART.plan,
-    gap: '#c0332e',
+    gap: CHART.target,
   };
 
   return (
@@ -341,7 +340,7 @@ function Bridge({ steps, target }: { steps: BridgeStep[]; target: number }) {
           { label: 'Banked', color: CHART.approved },
           { label: 'Awaiting approval', color: CHART.pipeline },
           { label: 'Planned, not yet due', color: CHART.plan },
-          { label: 'Unplanned gap', color: '#c0332e' },
+          { label: 'Unplanned gap', color: CHART.target },
         ]} />
         <p className="tiny muted" style={{ margin: '8px 0 0' }}>
           The unplanned gap is the part of the full-year commitment with no monthly plan behind it at all.

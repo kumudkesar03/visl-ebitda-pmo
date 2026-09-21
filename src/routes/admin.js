@@ -58,6 +58,8 @@ router.get('/users', requirePermission(P.USER_MANAGE), async (req, res, next) =>
       })),
       roles: rbac.ROLES,
       businessUnits: await repo.businessUnits(),
+      authMode: env.auth.mode,
+      dataMode: repo.mode(),
     });
   } catch (err) { next(err); }
 });
@@ -71,6 +73,8 @@ router.post('/users', requirePermission(P.USER_MANAGE), async (req, res, next) =
     if (await repo.findUserByEmployeeId(empId)) {
       return res.status(409).json({ error: `${empId} already exists.` });
     }
+    const pwError = passwordProblem(req.body, true);
+    if (pwError) return res.status(400).json({ error: pwError });
     const user = await repo.createUser(req.body, req.user);
     res.status(201).json({ user });
   } catch (err) { next(err); }
@@ -84,6 +88,8 @@ router.patch('/users/:id', requirePermission(P.USER_MANAGE), async (req, res, ne
     if (req.body.home_bu && !H.exists(req.body.home_bu)) {
       return res.status(400).json({ error: 'Unknown business unit.' });
     }
+    const pwError = passwordProblem(req.body, false);
+    if (pwError) return res.status(400).json({ error: pwError });
     // Losing the last administrator locks everyone out of user management with
     // no way back in short of a database edit.
     if (Number(req.params.id) === req.user.id
@@ -234,3 +240,21 @@ router.post('/system/reset', requirePermission(P.SETTINGS_MANAGE), async (req, r
 });
 
 module.exports = router;
+
+/**
+ * A local account needs a password it can actually sign in with; an AD account
+ * must not carry one. Same rule as `npm run seed -- --admin`: at least 10
+ * characters, and none of the characters that dotenv or a shell mangle.
+ */
+function passwordProblem(body, creating) {
+  if (body.ad_user) {
+    return body.password ? 'An Active Directory account signs in with its AD password. Leave the password blank.' : null;
+  }
+  if (!body.password) {
+    return creating && repo.mode() === 'mssql'
+      ? 'A local account needs an initial password (at least 10 characters), or mark it as an Active Directory account.'
+      : null;
+  }
+  if (String(body.password).length < 10) return 'Password must be at least 10 characters.';
+  return null;
+}

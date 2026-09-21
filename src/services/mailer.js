@@ -42,13 +42,13 @@ function getTransport() {
  * --------------------------------------------------------------------- */
 
 const BRAND = {
-  navy: '#0a1b33',
-  blue: '#12558f',
-  green: '#6cb33f',
-  ink: '#0f172a',
-  muted: '#64748b',
-  line: '#e2e8f0',
-  bg: '#f1f5f9',
+  blue: '#0062ae',     // Vedanta Iron & Steel wordmark blue
+  green: '#6db83f',    // the leaf green of the mark
+  leafText: '#3c7a1d',
+  ink: '#1b1f23',
+  muted: '#6b7178',
+  line: '#dfe1dd',
+  bg: '#f1f2ef',
 };
 
 const fmtCr = (v) => (v === null || v === undefined
@@ -73,8 +73,8 @@ function shell({ title, preheader, intro, blocks = [], cta, footnote }) {
       </table>`;
     }
     if (b.type === 'callout') {
-      const tone = b.tone === 'red' ? '#c0332e' : b.tone === 'green' ? '#08875b' : b.tone === 'amber' ? '#b45309' : BRAND.blue;
-      const bg = b.tone === 'red' ? '#fdecea' : b.tone === 'green' ? '#e7f6ef' : b.tone === 'amber' ? '#fef3e2' : '#eef4ff';
+      const tone = b.tone === 'red' ? '#c8372d' : b.tone === 'green' ? '#2e8540' : b.tone === 'amber' ? '#b7791f' : BRAND.blue;
+      const bg = b.tone === 'red' ? '#fcefed' : b.tone === 'green' ? '#edf7ef' : b.tone === 'amber' ? '#fcf5e7' : '#eef5fb';
       return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px">
         <tr><td style="background:${bg};border-left:3px solid ${tone};padding:12px 14px;color:${BRAND.ink};font-size:13px;line-height:1.55">${esc(b.text)}</td></tr>
       </table>`;
@@ -90,26 +90,26 @@ function shell({ title, preheader, intro, blocks = [], cta, footnote }) {
 
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>${esc(title)}</title></head>
-<body style="margin:0;padding:0;background:${BRAND.bg};font-family:'Segoe UI',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${BRAND.bg};font-family:'IBM Plex Sans','Segoe UI',Arial,sans-serif">
 <span style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(preheader || '')}</span>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.bg};padding:24px 12px">
 <tr><td align="center">
-  <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:100%;background:#fff;border:1px solid ${BRAND.line};border-radius:10px;overflow:hidden">
-    <tr><td style="background:${BRAND.navy};padding:18px 26px">
-      <div style="color:#fff;font-size:15px;font-weight:650;letter-spacing:-.01em">VISL EBITDA Drive PMO</div>
-      <div style="color:#93aac6;font-size:11.5px;margin-top:3px;letter-spacing:.03em">VEDANTA IRON &amp; STEEL &nbsp;&middot;&nbsp; ESL &nbsp;&middot;&nbsp; IRON ORE BUSINESS &nbsp;&middot;&nbsp; FACOR</div>
+  <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="width:620px;max-width:100%;background:#fff;border:1px solid ${BRAND.line};border-radius:6px;overflow:hidden">
+    <tr><td style="height:4px;background:${BRAND.blue};background-image:linear-gradient(90deg,${BRAND.blue} 62%,${BRAND.green} 100%)"></td></tr>
+    <tr><td style="padding:18px 26px 16px;border-bottom:1px solid ${BRAND.line}">
+      <div style="color:${BRAND.blue};font-size:15px;font-weight:600;letter-spacing:-.01em">EBITDA Drive PMO</div>
+      <div style="color:${BRAND.leafText};font-size:10.5px;margin-top:3px;letter-spacing:.12em;font-weight:600">VEDANTA IRON &amp; STEEL</div>
     </td></tr>
-    <tr><td style="height:3px;background:${BRAND.green}"></td></tr>
     <tr><td style="padding:26px">
       <h1 style="margin:0 0 6px;font-size:19px;color:${BRAND.ink};font-weight:650;letter-spacing:-.015em">${esc(title)}</h1>
       ${intro ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:${BRAND.muted}">${esc(intro)}</p>` : ''}
       ${rows}
       ${cta ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 4px"><tr>
-        <td style="background:${BRAND.blue};border-radius:7px"><a href="${esc(cta.url)}" style="display:inline-block;padding:11px 20px;color:#fff;font-size:13.5px;font-weight:600;text-decoration:none">${esc(cta.label)}</a></td>
+        <td style="background:${BRAND.blue};border-radius:4px"><a href="${esc(cta.url)}" style="display:inline-block;padding:11px 20px;color:#fff;font-size:13.5px;font-weight:600;text-decoration:none">${esc(cta.label)}</a></td>
       </tr></table>` : ''}
       ${footnote ? `<p style="margin:18px 0 0;font-size:12px;line-height:1.55;color:${BRAND.muted}">${esc(footnote)}</p>` : ''}
     </td></tr>
-    <tr><td style="padding:14px 26px;background:#fafbfc;border-top:1px solid ${BRAND.line}">
+    <tr><td style="padding:14px 26px;background:#f8f8f6;border-top:1px solid ${BRAND.line}">
       <p style="margin:0;font-size:11.5px;line-height:1.55;color:${BRAND.muted}">
         Automated message from the VISL EBITDA Drive PMO. Figures shown are as recorded in the system at the time of sending and are subject to PMO approval.
       </p>

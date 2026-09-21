@@ -26,14 +26,14 @@ SET NOCOUNT ON;
 
 MERGE dbo.business_units AS t
 USING (VALUES
-    ('VISL',  N'Vedanta Iron & Steel',      N'VISL',  NULL,    1, '#12558f', 10),
-    ('ESL',   N'ESL Steel Limited',         N'ESL',   'VISL',  0, '#0b5cff', 20),
-    ('IOB',   N'Iron Ore Business',         N'IOB',   'VISL',  1, '#08875b', 30),
-    ('IOK',   N'Iron Ore Karnataka',        N'IOK',   'IOB',   0, '#0891b2', 40),
-    ('IOG',   N'Iron Ore Goa',              N'IOG',   'IOB',   0, '#6941c6', 50),
-    ('VAB',   N'Value Added Business',      N'VAB',   'IOB',   0, '#b45309', 60),
-    ('HO',    N'IOB Head Office',           N'HO',    'IOB',   0, '#64748b', 70),
-    ('FACOR', N'Ferro Alloys Corporation',  N'FACOR', 'VISL',  0, '#c0332e', 80)
+    ('VISL',  N'Vedanta Iron & Steel',      N'VISL',  NULL,    1, '#0b3d6e', 10),
+    ('ESL',   N'ESL Steel Limited',         N'ESL',   'VISL',  0, '#0062ae', 20),
+    ('IOB',   N'Iron Ore Business',         N'IOB',   'VISL',  1, '#4d8f2a', 30),
+    ('IOK',   N'Iron Ore Karnataka',        N'IOK',   'IOB',   0, '#1f8a7a', 40),
+    ('IOG',   N'Iron Ore Goa',              N'IOG',   'IOB',   0, '#6a55a8', 50),
+    ('VAB',   N'Value Added Business',      N'VAB',   'IOB',   0, '#b7791f', 60),
+    ('HO',    N'IOB Head Office',           N'HO',    'IOB',   0, '#6b7178', 70),
+    ('FACOR', N'Ferro Alloys Corporation',  N'FACOR', 'VISL',  0, '#b4452f', 80)
 ) AS s (code, name, short_name, parent_code, is_consolidated, accent, sort_order)
 ON t.code = s.code
 WHEN MATCHED THEN UPDATE SET
@@ -60,16 +60,16 @@ GO
 
 MERGE dbo.categories AS t
 USING (VALUES
-    ('RAW', N'Raw material & sourcing', '#0b5cff', 10),
-    ('ENE', N'Energy & fuel',           '#b45309', 20),
-    ('LOG', N'Logistics & freight',     '#08875b', 30),
-    ('YLD', N'Yield & recovery',        '#6941c6', 40),
-    ('CON', N'Contracts & manpower',    '#0891b2', 50),
-    ('SPR', N'Stores & spares',         '#c0332e', 60),
-    ('WCP', N'Working capital',         '#ca8a04', 70),
-    ('SLS', N'Sales realisation',       '#be185d', 80),
-    ('OVH', N'Overheads & admin',       '#475569', 90),
-    ('DIG', N'Digital & automation',    '#7c3aed', 100)
+    ('RAW', N'Raw material & sourcing', '#0062ae', 10),
+    ('ENE', N'Energy & fuel',           '#d08a1c', 20),
+    ('LOG', N'Logistics & freight',     '#4d8f2a', 30),
+    ('YLD', N'Yield & recovery',        '#6a55a8', 40),
+    ('CON', N'Contracts & manpower',    '#1f8a7a', 50),
+    ('SPR', N'Stores & spares',         '#b4452f', 60),
+    ('WCP', N'Working capital',         '#8a9a1e', 70),
+    ('SLS', N'Sales realisation',       '#b0487a', 80),
+    ('OVH', N'Overheads & admin',       '#5f6b76', 90),
+    ('DIG', N'Digital & automation',    '#2c4f9e', 100)
 ) AS s (code, name, accent, sort_order)
 ON t.code = s.code
 WHEN MATCHED THEN UPDATE SET t.name = s.name, t.accent = s.accent, t.sort_order = s.sort_order

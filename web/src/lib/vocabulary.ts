@@ -56,16 +56,17 @@ export const CATEGORY_ORDER = ['RAW', 'ENE', 'LOG', 'YLD', 'CON', 'SPR', 'WCP', 
  * delivery is the only thing on a chart carrying colour.
  */
 export const CHART = {
-  plan: '#94a3b8',
-  planFill: 'rgba(148,163,184,.16)',
-  booked: '#0b5cff',
-  bookedFill: 'rgba(11,92,255,.12)',
-  approved: '#08875b',
-  pipeline: '#b45309',
-  gap: '#cbd5e1',
-  grid: '#e4e8ee',
-  axis: '#94a3b8',
-  series: ['#0b5cff', '#08875b', '#b45309', '#6941c6', '#c0332e', '#0891b2', '#be185d', '#ca8a04', '#475569', '#7c3aed'],
+  plan: '#b4b8b3',
+  planFill: 'rgba(151,156,161,.16)',
+  booked: '#0062ae',
+  bookedFill: 'rgba(0,98,174,.10)',
+  approved: '#4d8f2a',
+  pipeline: '#d08a1c',
+  gap: '#dfe1dd',
+  grid: '#e9ebe7',
+  axis: '#979ca1',
+  target: '#c8372d',
+  series: ['#0062ae', '#4d8f2a', '#d08a1c', '#6a55a8', '#b4452f', '#1f8a7a', '#b0487a', '#8a9a1e', '#5f6b76', '#2c4f9e'],
 };
 
 export function statusLabel(s: AnyStatus | string | null | undefined): string {

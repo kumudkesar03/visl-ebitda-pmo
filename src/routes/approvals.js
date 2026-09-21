@@ -67,7 +67,8 @@ router.get('/', async (req, res, next) => {
 });
 
 /** Decide one entry. `decision` is approve | reject | reopen. */
-router.post('/:monthId/:decision', async (req, res, next) => {
+// \d+ so that /bulk/:decision below is not swallowed with monthId = 'bulk'.
+router.post('/:monthId(\\d+)/:decision', async (req, res, next) => {
   try {
     const { decision } = req.params;
     if (!['approve', 'reject', 'reopen'].includes(decision)) {

@@ -35,8 +35,10 @@ async function main() {
 
   const files = fs.readdirSync(dir)
     .filter((f) => f.endsWith('.sql'))
-    // 99_* is the synthetic clean-up and must never run as part of a migration.
-    .filter((f) => !f.startsWith('99'))
+    // Only the schema: 01 tables, 02 reference data, 03 views, 04 verify.
+    // 00 (server setup, run once by a DBA as sysadmin), 05 (departments - edit
+    // the list first) and 99 (synthetic clean-up) are run by hand in SSMS.
+    .filter((f) => /^0[1-4]_/.test(f))
     .filter((f) => !only || f.startsWith(only))
     .sort();
 
@@ -55,7 +57,9 @@ async function main() {
   // "empty sys.tables" confusion in the ESL setup both came from a session
   // silently sitting on master.
   const [{ db }] = await query('SELECT DB_NAME() AS db');
-  if (db !== env.db.name) {
+  // Case-insensitive: SQL Server database names are, and DB_NAME=visl_pmo
+  // against a database created as VISL_PMO is the same database.
+  if (String(db).toLowerCase() !== String(env.db.name).toLowerCase()) {
     console.error(`  Connected to "${db}" but DB_NAME is "${env.db.name}". Refusing to run.`);
     process.exit(1);
   }

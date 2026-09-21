@@ -54,20 +54,31 @@ export function Login() {
   return (
     <div className="login-page">
       <div className="login-panel">
-        <img src="/img/visl-logo-white.png" alt="Vedanta Iron &amp; Steel" />
-        <h2>EBITDA Drive PMO</h2>
+        <img className="logo" src="/img/visl-logo-color.png" alt="Vedanta Iron &amp; Steel" />
+        <img className="watermark" src="/img/visl-mark.png" alt="" aria-hidden="true" />
+
+        <div className="login-kicker">EBITDA Drive · FY 2026-27</div>
+        <h2>One programme office for <em>every rupee</em> of the drive.</h2>
         <p>
-          One consolidated view of the cost-reduction drive across Vedanta Iron &amp; Steel — ESL,
-          the Iron Ore Business and FACOR. Every initiative, every month, every rupee, from the
-          plant floor to the board pack.
+          Initiatives, monthly plans and approved savings across Vedanta Iron &amp; Steel, consolidated
+          from the plant floor to the board pack.
         </p>
-        <div className="login-units">
-          <span>VISL</span><span>ESL</span><span>IOB</span>
-          <span>IOK</span><span>IOG</span><span>VAB</span><span>HO</span><span>FACOR</span>
+
+        <div className="login-tree" aria-label="Business units">
+          <span className="root">VISL · Vedanta Iron &amp; Steel</span>
+          <div className="branches">
+            <div className="node"><b>ESL</b><span>Steel</span></div>
+            <div className="node">
+              <b>IOB</b><span>Iron Ore Business</span>
+              <div className="leaves"><i>IOK</i><i>IOG</i><i>VAB</i><i>HO</i></div>
+            </div>
+            <div className="node"><b>FACOR</b><span>Ferro Alloys</span></div>
+          </div>
         </div>
+
         <div className="login-foot">
-          Savings count towards the drive only once approved by the PMO office.<br />
-          Access is scoped to your business unit and recorded in the audit trail.
+          Savings count towards the drive only once approved by the PMO office.
+          Access is scoped to your business unit and every decision is recorded in the audit trail.
         </div>
       </div>
 

@@ -127,6 +127,8 @@ async function updateUser(id, patch, actor) {
   if (!u) return null;
   const allowed = ['name', 'email', 'role', 'home_bu', 'designation', 'phone', 'is_active'];
   for (const k of allowed) if (patch[k] !== undefined) u[k] = patch[k];
+  if (patch.ad_user !== undefined) u.ad_user = !!patch.ad_user;
+  if (patch.password && !u.ad_user) u.password_plain = String(patch.password);
   audit(actor, 'user.update', 'user', u.id, `Updated ${u.employee_id}`);
   persist();
   return publicUser(u);
@@ -144,9 +146,9 @@ async function createUser(payload, actor) {
     designation: payload.designation || null,
     department: null,
     phone: payload.phone || null,
-    ad_user: false,
+    ad_user: !!payload.ad_user,
     is_active: true,
-    password_plain: payload.password || 'demo1234',
+    password_plain: payload.ad_user ? null : (payload.password || 'demo1234'),
     last_login: null,
     created_at: nowISO(),
   };

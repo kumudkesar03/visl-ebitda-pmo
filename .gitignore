@@ -9,3 +9,4 @@ public/*.html
 Thumbs.db
 .vscode/
 .idea/
+release/
